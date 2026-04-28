@@ -6,24 +6,26 @@
 # instead of the actual count.
 def donuts(count):
     if type(count) != int:
-        return(count + ' is not an integer')
-    else:
-        if int(count) < 10:
-            return('Number of donuts: ' + str(count))
-        else:
-            return('Number of donuts: many')
+        return(str(count) + ' is not an integer')
+    if int(count) < 10:
+        return('Number of donuts: ' + str(count))
+    return('Number of donuts: many')
 
 
 # verbing
-# def verbing(s):
-# +++your code here+++
-# Given a string, if its length is at least 3,
-# add 'ing' to its end.
-# Unless it already ends in 'ing', in which case
-# add 'ly' instead.
-# If the string length is less than 3, leave it unchanged.
-# Return the resulting string.
-# return
+
+# Given a string, if its length is at least 3, this function adds 'ing' to its end,
+# unless it already ends in 'ing', in which case 'ly' is added instead.
+# If the string length is less than 3, it is left unchanged.
+# Returns the resulting string.
+def verbing(s):
+    if type(s) != str:
+        return(str(s) + ' is not a string')
+    if len(s) < 3:
+        return(s)
+    if s[-3:] == 'ing':
+        return(s + 'ly')
+    return(s + 'ing')
 
 
 # Remove adjacent
@@ -43,10 +45,10 @@ def main():
     print(donuts(10))
     print(donuts('twentyone'))
 
-#print('verbing')
-#print(verbing('hail'))
-#print(verbing('swiming'))
-#print(verbing('do'))
+    print('verbing')
+    print(verbing('hail'))
+    print(verbing('swiming'))
+    print(verbing('do'))
 
 #print('remove_adjacent')
 #print(remove_adjacent([1, 2, 2, 3]))
