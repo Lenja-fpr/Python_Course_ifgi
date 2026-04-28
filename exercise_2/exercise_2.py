@@ -1,14 +1,17 @@
 # donuts
 
-# def donuts(count):
-# +++your code here+++
-# Given an integer count of a number of donuts, return a string
+# Given an integer count of a number of donuts, this function returns a string
 # of the form 'Number of donuts: <count>', where <count> is the number
-# passed in. However, if the count is 10 or more, then use the word 'many'
+# passed in. However, if the count is 10 or more, then the word 'many' is used
 # instead of the actual count.
-# So donuts(5) returns 'Number of donuts: 5'
-# and donuts(23) returns 'Number of donuts: many'
-# return
+def donuts(count):
+    if type(count) != int:
+        return(count + ' is not an integer')
+    else:
+        if int(count) < 10:
+            return('Number of donuts: ' + str(count))
+        else:
+            return('Number of donuts: many')
 
 
 # verbing
@@ -33,12 +36,12 @@
 # return
 
 
-#def main():
-#print('donuts')
-#print(donuts(4))
-#print(donuts(9))
-#print(donuts(10))
-#print(donuts('twentyone'))
+def main():
+    print('donuts')
+    print(donuts(4))
+    print(donuts(9))
+    print(donuts(10))
+    print(donuts('twentyone'))
 
 #print('verbing')
 #print(verbing('hail'))
@@ -51,5 +54,5 @@
 #print(remove_adjacent([]))
 
 # Standard boilerplate to call the main() function.
-#if __name__ == '__main__':
-#main()
+if __name__ == '__main__':
+    main()
