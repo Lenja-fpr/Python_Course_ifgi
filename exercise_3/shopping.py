@@ -1,8 +1,31 @@
-#Write a Python module (shopping.py) to create a class representing a shopping cart. Include
-#methods for adding and removing items, and calculating the total amount of items in the
-#cart. Add code to the main.py to execute the following actions with this class:
-#1. Add 3 different items in different quantities to your cart
-#2. Display the current items in the cart and calculate the total quantity
-#3. Remove an item from the cart, display the updated items, and recalculate the total
-#quantity
-#Use proper measures to make sure all 3 test cases can be run without exception
+class shoppingCart:
+
+    def __init__(self):
+        self.items = []
+
+    def addItem(self, item, quantity):
+        self.items.append([item, quantity])
+
+    def removeItem(self, item):
+        c = 0
+        toDelete = []
+
+        while c < len(self.items):
+            if self.items[c][0] == item:
+                toDelete.append(c)
+            c = c+1
+
+        d = len(toDelete) - 1
+        
+        while d >= 0:
+            del self.items[toDelete[d]]
+            d = d - 1
+
+    def calculateTotalItems(self):
+        
+        numberOfItems = 0
+
+        for item in self.items:
+            numberOfItems = numberOfItems + item[1]
+    
+        return numberOfItems
