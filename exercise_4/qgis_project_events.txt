@@ -1,0 +1,19 @@
+# Import the necessary modules
+from qgis.PyQt.QtWidgets import QMessageBox
+from qgis.utils import iface 
+from qgis.core import Qgis
+
+# Function that is called when a QGIS Project is opened
+def openProject():
+    QMessageBox.warning(None, "Open", "My first warning :)")
+    iface.messageBar().pushMessage("Open", "My first warning :)", level=Qgis.Info)
+
+# Function that is called when a QGIS Project is saved
+def saveProject():
+    QMessageBox.warning(None, "Save", "My first warning :)")
+    iface.messageBar().pushMessage("Save", "My first warning :)", level=Qgis.Critical)
+
+# Function that is called when a QGIS Project is closed
+def closeProject():
+    QMessageBox.warning(None, "Close", "My first warning :)")
+    iface.messageBar().pushMessage("Close", "My first warning :)", level=Qgis.Warning)
