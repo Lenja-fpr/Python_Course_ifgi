@@ -1,0 +1,8 @@
+# Import modules
+import webbrowser
+
+# Set dynamic url
+url = "http://www.google.com/search?q=[%NAME%]"
+
+# Use "open" function to open the url in the browser
+webbrowser.open(url, new=0, autoraise=True)
