@@ -1,5 +1,9 @@
 from calculator import calculator
+<<<<<<< HEAD
 from shopping import shoppingCart
+=======
+from shoppingCart import shoppingCart
+>>>>>>> main
 
 # numbers1 = calculator(7, 5)
 # print("7+5 =", numbers1.addition())
