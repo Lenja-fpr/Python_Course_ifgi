@@ -1,4 +1,4 @@
-# class to calculate numbers (addition/subtraction/multiplication/devision)
+# class to calculate numbers (addition/subtraction/multiplication/division)
 class calculator:
 
     def __init__(self, number1, number2):
