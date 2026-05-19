@@ -50,6 +50,9 @@ if bOk:
         QMessageBox.warning(parent, "Schools", "there must be a choosen district")
         exit()
         
+    ## get the centroid of the district
+    centroid = choosen_district.centroid()
+    
     ##resolve any selection in the school layer
     schools.removeSelection()
     
@@ -62,8 +65,11 @@ if bOk:
     ##save the selected schools in a list
     schools_in_district = []
     for school in schools.selectedFeatures():
+        ##get the distance
+        distance = round(QgsDistanceArea().measureLine(centroid.asPoint(), school.geometry().asPoint()) / 1000, 2)
+        ##save the informations about the school in the list
         schools_in_district.append(
-            f"{school['NAME']}, {school['SchoolType']}"
+            f"{school['NAME']}, {school['SchoolType']}, \ndistance to district centrum {distance} km \n"
         )
     
     ## zoom to the selection
