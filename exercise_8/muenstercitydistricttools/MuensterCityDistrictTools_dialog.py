@@ -99,8 +99,7 @@ class MuensterCityDistrictToolsDialog(QDialog, Ui_MuensterCityDistrictToolsDialo
             
     ##what happens when you click on the export button
     def open_export_dialog(self):
-        QMessageBox.information(self, "Export", "Export button works!")
-        
+
         ## open a new window
         dialog = QtWidgets.QDialog() # 1. an empty window to host the design
         ui = Ui_ExportDialog() # 2. an instance of your converted design
@@ -131,6 +130,29 @@ class MuensterCityDistrictToolsDialog(QDialog, Ui_MuensterCityDistrictToolsDialo
             QMessageBox.information(None, "Cancelled", "Export was cancelled.")
             return
         
+        with open(path, 'w', newline='') as csvfile:
+            spamwriter = csv.writer(
+                csvfile,
+                delimiter=' ',
+                quoting=csv.QUOTE_MINIMAL
+            )
+
+            spamwriter.writerow(["District Name", "Area (km²)", "Parcels", "Schools"])
+
+            # Loop over layer.selectedFeatures()
+            for feature in features:
+                data = createStatistics(feature["NAME"])
+
+                spamwriter.writerow([
+                    data["district_name"],
+                    data["area_km2"],
+                    data["count_parcels"],
+                    data["count_schools"]
+                ])
+
+        QMessageBox.information(None, "Success", "CSV export completed.")
+
+
     ## function to export the data as pdf
     def export_pdf(self):
         
@@ -152,3 +174,5 @@ class MuensterCityDistrictToolsDialog(QDialog, Ui_MuensterCityDistrictToolsDialo
         pdf_output, _ = QtWidgets.QFileDialog.getSaveFileName(None, "Save PDF", "", "PDF Files (*.pdf)")
 
         createPDF(self, features[0]["NAME"], pdf_output)
+        
+        QMessageBox.information(None, "Success", "PDF export completed.")
