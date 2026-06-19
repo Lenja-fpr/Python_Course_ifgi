@@ -11,9 +11,12 @@
 from PyQt5 import QtCore, QtGui, QtWidgets
 from qgis.PyQt.QtWidgets import QDialog 
 from PyQt5.QtWidgets import QMessageBox
-from qgis.core import QgsProject
+from qgis.core import QgsProject, QgsProcessingParameterFileDestination
 from .MuensterCityDistrictTools_profile import Ui_Dialog
 from .MuensterCityDistrictTools_export import Ui_Dialog as Ui_ExportDialog
+import csv
+from .statistics import createStatistics
+from .create_pdf import createPDF
 
 
 
@@ -46,6 +49,7 @@ class Ui_MuensterCityDistrictToolsDialogBase(object):
 
 
 class MuensterCityDistrictToolsDialog(QDialog, Ui_MuensterCityDistrictToolsDialogBase):
+
     def __init__(self, parent=None):
         super(MuensterCityDistrictToolsDialog, self).__init__(parent)
         self.setupUi(self)
@@ -54,7 +58,7 @@ class MuensterCityDistrictToolsDialog(QDialog, Ui_MuensterCityDistrictToolsDialo
 
     ## what happens when you click the query button
     def open_query_dialog(self):
-        QMessageBox.information(self, "Query", "Query button works!")
+        QMessageBox.information(self, "Information", "Creating statistics...")
 
         try:
             ## get the layer and the selected Features
@@ -75,16 +79,18 @@ class MuensterCityDistrictToolsDialog(QDialog, Ui_MuensterCityDistrictToolsDialo
         dialog = QtWidgets.QDialog() # 1. an empty window to host the design
         ui = Ui_Dialog() # 2. an instance of your converted design
         ui.setupUi(dialog) # 3. paint the design onto the window
+        
+        data = createStatistics(features[0]["NAME"])
     
         # now reach widgets through 'ui.' using their objectNames:
-        ui.label.setText(f"City district profile — {name}")
+        ui.label.setText(f"City district profile — {data['district_name']}")
         ui.profile_text.setText(
-            f"Parent district: {parent}\n"
-            f"Size: {area_km2} km²\n"
-            f"Households: {households}\n"
-            f"Parcels: {parcels}\n"
-            f"Schools: {schools}\n"
-            f"Pools: {pools}"
+            f"Parent district: {data['parent_district']}\n"
+            f"Size: {data['area_km2']} km²\n"
+            f"Households: {data['count_houses']}\n"
+            f"Parcels: {data['count_parcels']}\n"
+            f"Schools: {data['count_schools']}\n"
+            f"Pools: {data['count_pools']}"
         )
 
         ui.pbClose.clicked.connect(dialog.close)
@@ -109,12 +115,40 @@ class MuensterCityDistrictToolsDialog(QDialog, Ui_MuensterCityDistrictToolsDialo
     
     ## function to export the data as csv
     def export_csv(self):
+       
+        ## get the layer and the selected Features
+        layer = QgsProject.instance().mapLayersByName("Muenster_City_Districts")[0]
+        features = layer.selectedFeatures()
+
+        ## check if there is exactly one feature chosen
+        if len(features) == 0:
+            QMessageBox.warning(None, "Selection", "You have to select a district")
+            return
+
         options = QtWidgets.QFileDialog.Options()
         path, _ = QtWidgets.QFileDialog.getSaveFileName(None, "Save CSV", "", "CSV Files (*.csv)", options=options)
         if not path: # user hit Cancel
             QMessageBox.information(None, "Cancelled", "Export was cancelled.")
             return
-
+        
     ## function to export the data as pdf
     def export_pdf(self):
-        return
+        
+        try:
+            ## get the layer and the selected Features
+            layer = QgsProject.instance().mapLayersByName("Muenster_City_Districts")[0]
+            features = layer.selectedFeatures()
+
+            ## check if there is exactly one feature chosen
+            if len(features) == 0:
+                QMessageBox.warning(None, "Selection", "You have to select a district")
+                return
+            if len(features) > 1:
+                QMessageBox.warning(None, "Selection", "Only one feature can be queried at a time")
+                return
+        except:
+            QMessageBox.critical(None, "Layer Error", "The Layer probably doesn't exist")
+        
+        pdf_output, _ = QtWidgets.QFileDialog.getSaveFileName(None, "Save PDF", "", "PDF Files (*.pdf)")
+
+        createPDF(self, features[0]["NAME"], pdf_output)
