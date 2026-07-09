@@ -1,8 +1,20 @@
+# --- imports ---
 import arcpy
 import sys
+import time
+# ---
+
+#initialize the progressor bar
+arcpy.SetProgressor("step", "Starting…", 0, 4, 1)
+
 arcpy.env.overwriteOutput = True
 arcpy.env.workspace = r'C:\Users\Admin\Documents\Uni\PythonQGISArcGIS\Arcpy_Intro\Arcpy_Intro.gdb'
 aprx = arcpy.mp.ArcGISProject("CURRENT")
+
+#modify the progressor bar
+arcpy.SetProgressorLabel("Getting Data from Point Layer")
+arcpy.SetProgressorPosition(1)
+time.sleep(2)
 
 # get the needed point layer
 pointLayer = arcpy.GetParameterAsText(0)
@@ -17,6 +29,11 @@ geom_check = arcpy.management.CheckGeometry(pointLayer, r"in_memory\geom_check")
 if int(arcpy.management.GetCount(geom_check)[0]) > 0:
     arcpy.AddError("The input point layer contains invalid geometries.")
     sys.exit()
+    
+#modify the progressor bar
+arcpy.SetProgressorLabel("Ensure meters-based projection")
+arcpy.SetProgressorPosition(2)
+time.sleep(2)
 
 # check if the projection is already correct, else change the projection to meters-based projection
 target_sr = arcpy.SpatialReference(25832)
@@ -24,11 +41,14 @@ target_sr = arcpy.SpatialReference(25832)
 desc = arcpy.Describe(pointLayer)
 sr = desc.spatialReference
 
+#check if there is a reference system
 if sr is None:
     arcpy.AddError("The input layer has no spatial reference.")
     sys.exit()
 
+#check if ther is already the right projection
 if sr.factoryCode != target_sr.factoryCode:
+    #project the layer to EPSG:25832 and create a new layer
     arcpy.AddMessage("Reprojecting input points to EPSG:25832")
     points_projected = arcpy.management.Project(
         pointLayer,
@@ -36,11 +56,17 @@ if sr.factoryCode != target_sr.factoryCode:
         target_sr
     )[0]
 else:
+    #create a new layer anyways because the name has to fit
     arcpy.AddMessage("Input points already have the target projection")
     points_projected = arcpy.management.CopyFeatures(
         pointLayer,
         "pointLayer_projected"
     )[0]
+
+#modify the progressor bar
+arcpy.SetProgressorLabel("Calculating the results")
+arcpy.SetProgressorPosition(3)
+time.sleep(2)
 
 # 
 arcpy.management.Project(
@@ -78,6 +104,12 @@ with arcpy.da.SearchCursor("busstops_projected", ["OBJECTID", "name"], where) as
     for row in cur:
         stop_name = row[1]
 
+#modify the progressor bar
+arcpy.SetProgressorLabel("Returning the results")
+arcpy.SetProgressorPosition(4)
+time.sleep(2)
+
 # print results to the geoprocessing window
 arcpy.AddMessage(f"Distance: {round(distance, 0)} Meters")
 arcpy.AddMessage(f"Nearest stop: {stop_name}")
+arcpy.ResetProgressor()
