@@ -12,35 +12,35 @@ selected_place = arcpy.GetParameterAsText(0)
 # is the point inside an area with a high risk?
 # check by using select by location
 arcpy.management.SelectLayerByLocation(
-    in_layer="ueberflutungsgrenzen_hohe_Wahrscheinlichkeit",
+    in_layer="ueberflutungsgrenzen_hohe_wahrscheinlichkeit",
     overlap_type="INTERSECT",
     select_features=selected_place,
     selection_type="NEW_SELECTION",
     invert_spatial_relationship="NOT_INVERT"
 )
 # check if a feature is selected
-if int(arcpy.management.GetCount("ueberflutungsgrenzen_hohe_Wahrscheinlichkeit")[0]) != 0:
+if int(arcpy.management.GetCount("ueberflutungsgrenzen_hohe_wahrscheinlichkeit")[0]) != 0:
     arcpy.AddMessage("The given place is located in an area with a high risk of flooding")
 
     # clear the selection
-    arcpy.SelectLayerByAttribute_management("ueberflutungsgrenzen_hohe_Wahrscheinlichkeit","CLEAR_SELECTION")
+    arcpy.SelectLayerByAttribute_management("ueberflutungsgrenzen_hohe_wahrscheinlichkeit","CLEAR_SELECTION")
 
 else:
     # is the point in an area with a middle risk?
     # check by using select by location
     arcpy.management.SelectLayerByLocation(
-        in_layer="ueberflutungsgrenzen_mittlere_Wahrscheinlichkeit",
+        in_layer="ueberflutungsgrenzen_mittlere_wahrscheinlichkeit",
         overlap_type="INTERSECT",
         select_features=selected_place,
         selection_type="NEW_SELECTION",
         invert_spatial_relationship="NOT_INVERT"
     )
     #check if a feature is selected
-    if int(arcpy.management.GetCount("ueberflutungsgrenzen_mittlere_Wahrscheinlichkeit")[0]) != 0:
+    if int(arcpy.management.GetCount("ueberflutungsgrenzen_mittlere_wahrscheinlichkeit")[0]) != 0:
         arcpy.AddMessage("The given place is located in an area with a moderate risk of flooding")
     
         #clear the selection
-        arcpy.SelectLayerByAttribute_management("ueberflutungsgrenzen_mittlere_Wahrscheinlichkeit","CLEAR_SELECTION")
+        arcpy.SelectLayerByAttribute_management("ueberflutungsgrenzen_mittlere_wahrscheinlichkeit","CLEAR_SELECTION")
 
     else:
         # is the point in an area with a low risk?
