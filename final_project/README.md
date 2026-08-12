@@ -12,3 +12,18 @@
 - to be continued
 
 https://pegelonline.wsv.de/webservice/guideRestapi
+
+### Data
+download the following data and load it into your ArcGIS project
+
+- https://www.opengeodata.nrw.de/produkte/umwelt_klima/wasser/hochwasser/hwrm/HQhaeufig-Ueberschwemmungsgrenzen_EPSG25832_Shape.zip
+    -> load the file ueberflutungsgrenzen_hohe_wahrscheinlichkeit into your ArcGIS project
+
+- https://www.opengeodata.nrw.de/produkte/umwelt_klima/wasser/hochwasser/hwrm/HQ100-Ueberschwemmungsgrenzen_EPSG25832_Shape.zip
+    -> load the file ueberflutungsgrenzen_mittlere_wahrscheinlichkeit into your ArcGIS project
+
+- https://www.opengeodata.nrw.de/produkte/umwelt_klima/wasser/hochwasser/hwrm/HQextrem-Ueberschwemmungsgrenzen_EPSG25832_Shape.zip
+    -> load the file ueberflutungsgrenzen_niedrige Wahrscheinlichkeit into your ArcGIS project
+
+- https://www.opengeodata.nrw.de/produkte/umwelt_klima/wasser/oberflaechengewaesser/gsk3e/gsk3e_EPSG25832_Shape.zip
+    -> load the file gsk3e_gewkz_line_breite into your ArcGIS project
