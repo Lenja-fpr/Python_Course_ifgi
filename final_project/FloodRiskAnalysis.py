@@ -1,6 +1,7 @@
 ### --- imports ---
 import arcpy
 import requests
+import os
 
 
 ### --- input ---
@@ -96,9 +97,90 @@ arcpy.AddMessage(f"Distance to the nearest river: {distance}")
 arcpy.AddMessage(f"Witdh of the nearest river: {nearestWidth}m")
 
 
-### --- Get water level data from the nearest river via an API ---
-#river = nearestName.upper()
-river = "RHEIN" # delete this later when the API stuff below is fully implemented
+# -------- Get water level data from the nearest river via an API ---------------
+
+river = nearestName.upper()
+
+# function to find the nearest measuring station to a given point from a json list of stations 
+def findNearestStation(json):
+    # collect the uuids, names and coordinates of all stations in a list
+    stations_list = []
+    for station in json:
+        if 'longitude' in station:
+            uuid = station['uuid']
+            name = station['longname']
+            lon = station['longitude']
+            lat = station['latitude']
+            stations_list.append([uuid, name, (lon, lat)])
+        
+    # add the measuring stations to a feature class and add it to the map:
+    # get the currently active geodatabase
+    aprx = arcpy.mp.ArcGISProject("CURRENT")
+    map_obj = aprx.activeMap
+    gdb = aprx.defaultGeodatabase
+    fc_path = os.path.join(gdb, "measuring_stations")
+    # create a new featureclass (overwrite if it already exists)
+    for layer in map_obj.listLayers():
+        if layer.name == "measuring_stations":
+            map_obj.removeLayer(layer)
+    if arcpy.Exists(fc_path):
+        arcpy.management.Delete(fc_path)
+    arcpy.management.CreateFeatureclass(gdb, "measuring_stations", "POINT", spatial_reference=arcpy.SpatialReference(4326))
+    # add fields to the featureclass
+    arcpy.management.AddField("measuring_stations", "uuid", "TEXT")
+    arcpy.management.AddField("measuring_stations", "name", "TEXT")
+    
+    # fill the featureclass with the data from the table
+    cursor = arcpy.da.InsertCursor("measuring_stations", ["uuid", "name", "SHAPE@XY"])
+    for uuid, name, coordinates in stations_list:
+        cursor.insertRow([uuid, name, coordinates])
+    del cursor
+    map_obj.addDataFromPath(os.path.join(gdb, "measuring_stations"))
+    
+    # find nearest station
+    arcpy.analysis.Near(
+        in_features=selected_place,
+        near_features="measuring_stations",
+        location="LOCATION",
+        angle="NO_ANGLE",
+        method="PLANAR",
+        field_names="NEAR_FID NEAR_FID;NEAR_DIST NEAR_DIST;NEAR_X NEAR_X;NEAR_Y NEAR_Y",
+        distance_unit="Meters"
+    )
+
+    # get details of the nearest station
+    with arcpy.da.SearchCursor(
+        selected_place,
+        ["NEAR_DIST", "NEAR_FID"]
+    ) as cur:
+
+        for row in cur:
+            distance = row[0]
+            near_fid = row[1]
+
+    # get the actual ObjectID field name of measuring_stations
+    oid_field = arcpy.Describe("measuring_stations").OIDFieldName
+
+    # find the station with the corresponding ObjectID
+    where = f"{arcpy.AddFieldDelimiters('measuring_stations', oid_field)} = {near_fid}"
+
+    with arcpy.da.SearchCursor(
+        "measuring_stations",
+        [oid_field, "uuid", "name"],
+        where
+    ) as cur:
+
+        for row in cur:
+            uuid = row[1]
+            station_name = row[2]
+ 
+    # output
+    arcpy.AddMessage(f"Distance to station: {distance} m")
+    arcpy.AddMessage(f"Station name: {station_name}")
+    station_id = uuid
+    return station_id
+
+
 
 # check if the API responds
 response = requests.get(f"https://pegelonline.wsv.de/webservices/rest-api/v2/stations.json")
@@ -106,32 +188,29 @@ json_data = response.json() if response and response.status_code == 200 else Non
 if json_data:
     # check if threre is data available for the nearest river
     response = requests.get(f"https://pegelonline.wsv.de/webservices/rest-api/v2/stations.json?waters={river}")
-    json_data = response.json() if response and response.status_code == 200 else None
-    if json_data:
-        arcpy.AddMessage(f"API data available for river {river}")
-        # TODO find nearest station for the river in question
-        # store its uuid in variable "station_id"
+    json_river_data = response.json() if response and response.status_code == 200 else None
+    if not json_river_data:
+        arcpy.AddMessage(f"No water levels available for the river {nearestName} via pegelonline API. The following water level data was measured at the nearest measuring station of any river:")
+        # find the nearest measuring station of any river and store its uuid in variable "station_id"
+        station_id = findNearestStation(json_data)
     else:
-        arcpy.AddMessage(f"No water levels available for {river} via this API.")
-        # TODO find nearest measuring station of any river
-        # store its uuid in variable "station_id"
-        # print(f"The nearest measuring station is {station}, measuring the water levels of {its river}.")
-
-    station_id = "b475386c-30cc-453a-b3b7-1d17ace13595" # static id for now
+        # find the nearest station for the river in question store its uuid in variable "station_id"
+        station_id = findNearestStation(json_river_data)
 
     # check if measurements are available for this station
     response = requests.get(f"https://pegelonline.wsv.de/webservices/rest-api/v2/stations/{station_id}.json?includeTimeseries=true&includeCurrentMeasurement=true")
     json_data = response.json() if response and response.status_code == 200 else None
     if json_data:
         # print water level info
-        arcpy.AddMessage(f"""Water level of the river {json_data['water']['longname']} 
+        arcpy.AddMessage(f"""Water levels for the river {json_data['water']['longname']} 
             in {json_data['longname']} 
             at {json_data['timeseries'][0]['currentMeasurement']['timestamp']}: 
-            {json_data['timeseries'][0]['currentMeasurement']['value']}{json_data['timeseries'][0]['unit']},
-            which is {json_data['timeseries'][0]['currentMeasurement']['stateMnwMhw']} for this river.""")
+            {json_data['timeseries'][0]['currentMeasurement']['value']}{json_data['timeseries'][0]['unit']}.""")
+        if(('stateMnwMhw' in json_data['timeseries'][0]['currentMeasurement']) and (json_data['timeseries'][0]['currentMeasurement']['stateMnwMhw'] != "unknown")):
+            arcpy.AddMessage(f"The current water level is {json_data['timeseries'][0]['currentMeasurement']['stateMnwMhw']} for this river.")
             # TODO add average
             # TODO add time series image of the past 15 days water levels
             # TODO add forecast
-    else: arcpy.AddMessage("No water level data available for this station right now.")
+    else: arcpy.AddMessage("No water level data available for this station right now.") 
 
 else: arcpy.AddMessage("No water levels API response.")
