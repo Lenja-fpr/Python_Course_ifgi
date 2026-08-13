@@ -122,7 +122,11 @@ def findNearestStation(json):
     # create a new featureclass (overwrite if it already exists)
     for layer in map_obj.listLayers():
         if layer.name == "measuring_stations":
-            map_obj.removeLayer(layer)
+            if layer.isFeatureLayer:
+                layer_path = layer.dataSource
+            if os.path.normcase(layer_path) == os.path.normcase(fc_path):
+                map_obj.removeLayer(layer)
+                #del layer
     if arcpy.Exists(fc_path):
         arcpy.management.Delete(fc_path)
     arcpy.management.CreateFeatureclass(gdb, "measuring_stations", "POINT", spatial_reference=arcpy.SpatialReference(4326))
@@ -131,11 +135,9 @@ def findNearestStation(json):
     arcpy.management.AddField("measuring_stations", "name", "TEXT")
     
     # fill the featureclass with the data from the table
-    cursor = arcpy.da.InsertCursor("measuring_stations", ["uuid", "name", "SHAPE@XY"])
-    for uuid, name, coordinates in stations_list:
-        cursor.insertRow([uuid, name, coordinates])
-    del cursor
-    map_obj.addDataFromPath(os.path.join(gdb, "measuring_stations"))
+    with arcpy.da.InsertCursor(fc_path, ["uuid", "name", "SHAPE@XY"]) as cursor:
+        for uuid, name, coordinates in stations_list:
+            cursor.insertRow([uuid, name, coordinates])
     
     # find nearest station
     arcpy.analysis.Near(
