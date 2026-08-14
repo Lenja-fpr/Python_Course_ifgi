@@ -101,6 +101,19 @@ arcpy.AddMessage(f"Witdh of the nearest river: {nearestWidth}m")
 
 river = nearestName.upper()
 
+# handle Umlaute in the river name for the API request
+if "Ä" in river:
+    river = river.replace("Ä", "%C3%84")
+if "Ö" in river:
+    river = river.replace("Ö", "%C3%96")
+if "Ü" in river:
+    river = river.replace("Ü", "%C3%9C")
+    
+# hande spaces:
+if " " in river:
+    river = river.replace(" ", "%20")
+
+
 # function to find the nearest measuring station to a given point from a json list of stations 
 def findNearestStation(json):
     # collect the uuids, names and coordinates of all stations in a list
