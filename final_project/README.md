@@ -32,7 +32,7 @@ download the following data and load it into your ArcGIS project
 
   load the file gsk3e_gewkz_line_breite into your ArcGIS project
 
-### Instalation
+### Installation
 We use "Openmeteo" for our rain forecast. Therefore, you have to install two packages.
 
 ! The following instructions only work for Windows !
@@ -46,6 +46,10 @@ conda create -n your_env --clone arcgispro-py3
 ```
 proswap activate your_env
 ```
+if that doesn't work, use
+```
+activate your_env
+```
 - install the following modules:
 ```
 pip install openmeteo-requests
@@ -54,3 +58,4 @@ pip install requests-cache retry-requests numpy pandas
 - open your ArcGIS Project
 - go to "Project" -> "Package Manager"
 - click on "Active Environment" and choose your new environment
+- restart ArcGIS
