@@ -1,14 +1,15 @@
 ### --- imports ---
 import arcpy
 import requests
+import openmeteo_requests
+import pandas as pd
+import requests_cache
+from retry_requests import retry
 import os
 from io import BytesIO
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image
 from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib.pagesizes import A4
-from reportlab.pdfgen import canvas
-from reportlab.lib.utils import ImageReader
 
 
 ### --- input ---
@@ -87,11 +88,19 @@ arcpy.analysis.Near(
 )
 
 # get datails of the nearest river
-with arcpy.da.SearchCursor(selected_place, ["NEAR_DIST", "NEAR_FID"]) as cur:
+with arcpy.da.SearchCursor(selected_place, ["NEAR_DIST", "NEAR_FID", "SHAPE@"]) as cur:
     for row in cur:
-        distance = row[0] # distance to the closest river
+        distance = round(row[0],2) # distance to the closest river (rounded to 2 decimal places)
         near_fid = row[1] # ObjectID of the closest river
-        
+        point = row[2] # get the location of the selected place
+
+        #get the location as lat or long
+        point_wgs84 = point.projectAs(
+            arcpy.SpatialReference(4326)
+        )
+        longitude = point_wgs84.firstPoint.X
+        latitude = point_wgs84.firstPoint.Y   
+
 where = f"FID = {near_fid}"
 
 with arcpy.da.SearchCursor("gsk3e_gewkz_line_breite", ["FID", "GEWHNAME", "ST_BREITE"], where) as cur:
@@ -101,8 +110,8 @@ with arcpy.da.SearchCursor("gsk3e_gewkz_line_breite", ["FID", "GEWHNAME", "ST_BR
 
 # output
 arcpy.AddMessage(f"Nearest river: {nearestName}")
-arcpy.AddMessage(f"Distance to the nearest river: {distance}")
-arcpy.AddMessage(f"Witdh of the nearest river: {nearestWidth}m")
+arcpy.AddMessage(f"Distance to the nearest river: {distance}m")
+arcpy.AddMessage(f"Width of the nearest river: {nearestWidth}m")
 
 
 # -------- Get water level data from the nearest river via an API ---------------
@@ -275,3 +284,44 @@ if json_data:
     else: water_level_msg = water_level_msg + ("No water level data available for this station right now.")
 
 else: water_level_msg = "No water levels available; the API does not respond."
+
+
+
+# ---------- Weather forecast ------------------
+
+# Setup the Open-Meteo API client with cache and retry on error
+cache_session = requests_cache.CachedSession('.cache', expire_after = 3600)
+retry_session = retry(cache_session, retries = 5, backoff_factor = 0.2)
+openmeteo = openmeteo_requests.Client(session = retry_session)
+
+# Make sure all required weather variables are listed here
+# The order of variables in hourly or daily is important to assign them correctly below
+url = "https://api.open-meteo.com/v1/forecast"
+params = {
+	"latitude": latitude,
+	"longitude": longitude,
+	"daily": "rain_sum",
+}
+responses = openmeteo.weather_api(url, params = params)
+
+# Process first location. Add a for-loop for multiple locations or weather models
+response = responses[0]
+
+# Process daily data. The order of variables needs to be the same as requested.
+daily = response.Daily()
+daily_rain_sum = daily.Variables(0).ValuesAsNumpy()
+
+daily_data = {
+	"date": pd.date_range(
+		start = pd.to_datetime(daily.Time(), unit = "s", utc = True).tz_localize(None),
+		end =  pd.to_datetime(daily.TimeEnd(), unit = "s", utc = True).tz_localize(None),
+		freq = pd.Timedelta(seconds = daily.Interval()),
+		inclusive = "left"
+	)
+}
+
+daily_data["rain_sum"] = daily_rain_sum
+
+daily_dataframe = pd.DataFrame(data = daily_data)
+arcpy.AddMessage("\nHere you can see the predicted amount of rain in mm for the next week at your selected place:")
+arcpy.AddMessage(daily_dataframe)
