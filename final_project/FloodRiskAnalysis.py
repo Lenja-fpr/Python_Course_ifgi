@@ -3,6 +3,9 @@ import arcpy
 import requests
 import os
 from io import BytesIO
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image
+from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
@@ -25,7 +28,7 @@ arcpy.management.SelectLayerByLocation(
 )
 # check if a feature is selected
 if int(arcpy.management.GetCount("ueberflutungsgrenzen_hohe_wahrscheinlichkeit")[0]) != 0:
-    arcpy.AddMessage("The given place is located in an area with a high risk of flooding")
+    risk_text = "The given place is located in an area with a high risk of flooding (compared to the 'Hochwasser-Gefahrenkarte NRW')."
 
     # clear the selection
     arcpy.SelectLayerByAttribute_management("ueberflutungsgrenzen_hohe_wahrscheinlichkeit","CLEAR_SELECTION")
@@ -42,8 +45,8 @@ else:
     )
     #check if a feature is selected
     if int(arcpy.management.GetCount("ueberflutungsgrenzen_mittlere_wahrscheinlichkeit")[0]) != 0:
-        arcpy.AddMessage("The given place is located in an area with a moderate risk of flooding")
-    
+        risk_text = "The given place is located in an area with a moderate risk of flooding (compared to the 'Hochwasser-Gefahrenkarte NRW')."
+
         #clear the selection
         arcpy.SelectLayerByAttribute_management("ueberflutungsgrenzen_mittlere_wahrscheinlichkeit","CLEAR_SELECTION")
 
@@ -59,14 +62,15 @@ else:
         )
         #check if a feature is selected
         if int(arcpy.management.GetCount("ueberflutungsgrenzen_niedrige Wahrscheinlichkeit")[0]) != 0:
-            arcpy.AddMessage("The given place is located in an area with a low risk of flooding")
-            
+            risk_text = "The given place is located in an area with a low risk of flooding (compared to the 'Hochwasser-Gefahrenkarte NRW')."
+
             #clear the selection
             arcpy.SelectLayerByAttribute_management("ueberflutungsgrenzen_niedrige Wahrscheinlichkeit","CLEAR_SELECTION")
 
         else:
             # the point is in an area without a risk
-            arcpy.AddMessage("The given place is located in an area without a risk of flooding (compared to the 'Hochwasser-Gefahrenkarte NRW')")
+            risk_text = f"The given place is located in an area without a risk of flooding (compared to the 'Hochwasser-Gefahrenkarte NRW')."
+        arcpy.AddMessage(risk_text)
 
 
 ### --- find the nearest river ---
@@ -194,10 +198,9 @@ def findNearestStation(json):
             station_name = row[2]
  
     # output
-    arcpy.AddMessage(f"Distance to station: {distance} m")
     arcpy.AddMessage(f"Station name: {station_name}")
     station_id = uuid
-    return station_id
+    return distance, station_id
 
 
 
@@ -209,60 +212,66 @@ if json_data:
     response = requests.get(f"https://pegelonline.wsv.de/webservices/rest-api/v2/stations.json?waters={river}")
     json_river_data = response.json() if response and response.status_code == 200 else None
     if not json_river_data:
-        arcpy.AddMessage(f"No water levels available for the river {nearestName} via pegelonline API. The following water level data was measured at the nearest measuring station of any river:")
+        water_level_msg=f"No water levels available for the river {nearestName} via pegelonline API. The following water level data was measured at the nearest measuring station of any river: "
         # find the nearest measuring station of any river and store its uuid in variable "station_id"
-        station_id = findNearestStation(json_data)
+        distance, station_id = findNearestStation(json_data)
     else:
         # find the nearest station for the river in question store its uuid in variable "station_id"
-        station_id = findNearestStation(json_river_data)
+        distance, station_id = findNearestStation(json_river_data)
 
     # check if measurements are available for this station
     response = requests.get(f"https://pegelonline.wsv.de/webservices/rest-api/v2/stations/{station_id}.json?includeTimeseries=true&includeCurrentMeasurement=true")
     json_data = response.json() if response and response.status_code == 200 else None
     if json_data:
-        # print water level info
-        arcpy.AddMessage(f"""Water levels for the river {json_data['water']['longname']} 
+        # build water level info text
+        water_level_msg = water_level_msg +(f"""Water levels for the river {json_data['water']['longname']}  
             in {json_data['longname']} 
-            at {json_data['timeseries'][0]['currentMeasurement']['timestamp']}: 
-            {json_data['timeseries'][0]['currentMeasurement']['value']}{json_data['timeseries'][0]['unit']}.""")
+            at {json_data['timeseries'][0]['currentMeasurement']['timestamp']}:
+            {json_data['timeseries'][0]['currentMeasurement']['value']}{json_data['timeseries'][0]['unit']}.
+            Distance to measuring station: {distance}m""")
         if(('stateMnwMhw' in json_data['timeseries'][0]['currentMeasurement']) and (json_data['timeseries'][0]['currentMeasurement']['stateMnwMhw'] != "unknown")):
-            arcpy.AddMessage(f"The current water level is {json_data['timeseries'][0]['currentMeasurement']['stateMnwMhw']} for this river.")
+            water_level_msg = water_level_msg + (f"The current water level is {json_data['timeseries'][0]['currentMeasurement']['stateMnwMhw']} for this river.")
+        # print water level info
+        arcpy.AddMessage(water_level_msg)
 
         # get time series image of the past 30 days water levels
         response = requests.get(f"https://pegelonline.wsv.de/webservices/rest-api/v2/stations/{station_id}/W/measurements.png?start=P30D&width=900&height=400")
         if response.status_code == 200:
-            img = ImageReader(BytesIO(response.content))
-            #pdf_path = os.path.join(arcpy.env.scratchFolder, f"FloodRiskAnalysis.pdf")
-            pdf_path = arcpy.GetParameterAsText(1)
             # create PDF
-            c = canvas.Canvas(pdf_path, pagesize=A4)
-            width, height = A4
-            # Überschrift
-            #c.setFont("Helvetica-Bold", 18)
-            #c.drawString(50, height - 60,"Measuring Station Report")
+            pdf_path = arcpy.GetParameterAsText(1)
+            pdf = SimpleDocTemplate(pdf_path, pagesize=letter)
+            styles = getSampleStyleSheet()
+            content = []
 
-            # Text
-            #c.setFont("Helvetica", 11)
-            #c.drawString(50, height - 100, f"Station: {station_name}")
-            #c.drawString(50, height - 120, f"UUID: {station_id}")
-            # c.drawString(50, height - 140, f"Distance: {distance:.2f} m")
+            # heading:
+            content.append(Paragraph("Flood Risk Analysis Report", styles["Title"]))
+            content.append(Spacer(1, 12))
 
-            # Bild
-            c.drawImage(
-                img,
-                50,
-                height - 550,
-                width=500,
-                height=300,
-                preserveAspectRatio=True
-            )
-            c.save()
+            # text
+            body = f"""
+            {risk_text} <br/>
+            Nearest river: {nearestName} <br/>
+            Distance to the nearest river: {distance}m <br/>
+            Width of the nearest river: {nearestWidth}m <br/>
+            {water_level_msg} <br/>
+            Water level history for the past 30 days:
+            """
+            content.append(Paragraph(body, styles["Normal"]))
+            content.append(Spacer(1, 12))
+
+            # chart image as a reportlab flowable
+            chart = Image(BytesIO(response.content), width=500, height=300)
+            chart.hAlign = "CENTER"
+            content.append(chart)
+
+            pdf.build(content)
+
             arcpy.SetParameterAsText(1, pdf_path)
         else:
             arcpy.AddMessage("No water level history available for this station right now.")
 
         # TODO add forecast
 
-    else: arcpy.AddMessage("No water level data available for this station right now.") 
+    else: water_level_msg = water_level_msg + ("No water level data available for this station right now.")
 
-else: arcpy.AddMessage("No water levels API response.")
+else: water_level_msg = "No water levels available; the API does not respond."
