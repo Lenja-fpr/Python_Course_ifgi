@@ -2,6 +2,10 @@
 import arcpy
 import requests
 import os
+from io import BytesIO
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+from reportlab.lib.utils import ImageReader
 
 
 ### --- input ---
@@ -108,7 +112,7 @@ if "Ö" in river:
     river = river.replace("Ö", "%C3%96")
 if "Ü" in river:
     river = river.replace("Ü", "%C3%9C")
-    
+
 # hande spaces:
 if " " in river:
     river = river.replace(" ", "%20")
@@ -223,9 +227,42 @@ if json_data:
             {json_data['timeseries'][0]['currentMeasurement']['value']}{json_data['timeseries'][0]['unit']}.""")
         if(('stateMnwMhw' in json_data['timeseries'][0]['currentMeasurement']) and (json_data['timeseries'][0]['currentMeasurement']['stateMnwMhw'] != "unknown")):
             arcpy.AddMessage(f"The current water level is {json_data['timeseries'][0]['currentMeasurement']['stateMnwMhw']} for this river.")
-            # TODO add average
-            # TODO add time series image of the past 15 days water levels
-            # TODO add forecast
+
+        # get time series image of the past 30 days water levels
+        response = requests.get(f"https://pegelonline.wsv.de/webservices/rest-api/v2/stations/{station_id}/W/measurements.png?start=P30D&width=900&height=400")
+        if response.status_code == 200:
+            img = ImageReader(BytesIO(response.content))
+            #pdf_path = os.path.join(arcpy.env.scratchFolder, f"FloodRiskAnalysis.pdf")
+            pdf_path = arcpy.GetParameterAsText(1)
+            # create PDF
+            c = canvas.Canvas(pdf_path, pagesize=A4)
+            width, height = A4
+            # Überschrift
+            #c.setFont("Helvetica-Bold", 18)
+            #c.drawString(50, height - 60,"Measuring Station Report")
+
+            # Text
+            #c.setFont("Helvetica", 11)
+            #c.drawString(50, height - 100, f"Station: {station_name}")
+            #c.drawString(50, height - 120, f"UUID: {station_id}")
+            # c.drawString(50, height - 140, f"Distance: {distance:.2f} m")
+
+            # Bild
+            c.drawImage(
+                img,
+                50,
+                height - 550,
+                width=500,
+                height=300,
+                preserveAspectRatio=True
+            )
+            c.save()
+            arcpy.SetParameterAsText(1, pdf_path)
+        else:
+            arcpy.AddMessage("No water level history available for this station right now.")
+
+        # TODO add forecast
+
     else: arcpy.AddMessage("No water level data available for this station right now.") 
 
 else: arcpy.AddMessage("No water levels API response.")

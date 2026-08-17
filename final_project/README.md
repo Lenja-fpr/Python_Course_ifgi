@@ -31,3 +31,6 @@ download the following data and load it into your ArcGIS project
 - https://www.opengeodata.nrw.de/produkte/umwelt_klima/wasser/oberflaechengewaesser/gsk3e/gsk3e_EPSG25832_Shape.zip
 
   load the file gsk3e_gewkz_line_breite into your ArcGIS project
+
+
+```conda install reportlab```
