@@ -8,15 +8,18 @@ from retry_requests import retry
 import os
 from io import BytesIO
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table
 from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib import colors
+from reportlab.platypus.flowables import KeepTogether
+from datetime import datetime
 
 
 ### --- input ---
 selected_place = arcpy.GetParameterAsText(0)
 
 
-### --- Compare the selected place to the Floodrisk Map of NRW ---
+### --- Compare the selected place to the flood risk map of NRW ---
 
 # is the point inside an area with a high risk?
 # check by using select by location
@@ -70,7 +73,7 @@ else:
 
         else:
             # the point is in an area without a risk
-            risk_text = f"The given place is located in an area without a risk of flooding (compared to the 'Hochwasser-Gefahrenkarte NRW')."
+            risk_text = f"The given place is located in an area without risk of flooding (compared to the 'Hochwasser-Gefahrenkarte NRW')."
         arcpy.AddMessage(risk_text)
 
 
@@ -126,7 +129,7 @@ if "Ö" in river:
 if "Ü" in river:
     river = river.replace("Ü", "%C3%9C")
 
-# hande spaces:
+# handle spaces:
 if " " in river:
     river = river.replace(" ", "%20")
 
@@ -221,7 +224,7 @@ if json_data:
     response = requests.get(f"https://pegelonline.wsv.de/webservices/rest-api/v2/stations.json?waters={river}")
     json_river_data = response.json() if response and response.status_code == 200 else None
     if not json_river_data:
-        water_level_msg=f"No water levels available for the river {nearestName} via pegelonline API. The following water level data was measured at the nearest measuring station of any river: "
+        water_level_msg=f"No water levels available for the river {nearestName} via pegelonline API. The following water level data was measured at the nearest measuring station of any river: <br/>"
         # find the nearest measuring station of any river and store its uuid in variable "station_id"
         distance, station_id = findNearestStation(json_data)
     else:
@@ -233,51 +236,23 @@ if json_data:
     json_data = response.json() if response and response.status_code == 200 else None
     if json_data:
         # build water level info text
-        water_level_msg = water_level_msg +(f"""Water levels for the river {json_data['water']['longname']}  
+        water_level_msg = water_level_msg +(f"""Water level for the river {json_data['water']['longname']}  
             in {json_data['longname']} 
             at {json_data['timeseries'][0]['currentMeasurement']['timestamp']}:
-            {json_data['timeseries'][0]['currentMeasurement']['value']}{json_data['timeseries'][0]['unit']}.
-            Distance to measuring station: {distance}m""")
+            <b> {json_data['timeseries'][0]['currentMeasurement']['value']}{json_data['timeseries'][0]['unit']}</b>. <br/>
+            <b> Distance to measuring station: </b> {distance}m""")
         if(('stateMnwMhw' in json_data['timeseries'][0]['currentMeasurement']) and (json_data['timeseries'][0]['currentMeasurement']['stateMnwMhw'] != "unknown")):
-            water_level_msg = water_level_msg + (f"The current water level is {json_data['timeseries'][0]['currentMeasurement']['stateMnwMhw']} for this river.")
+            water_level_msg = water_level_msg + (f"<br/> The current water level is <b> {json_data['timeseries'][0]['currentMeasurement']['stateMnwMhw']} </b> for this river.")
         # print water level info
         arcpy.AddMessage(water_level_msg)
 
         # get time series image of the past 30 days water levels
         response = requests.get(f"https://pegelonline.wsv.de/webservices/rest-api/v2/stations/{station_id}/W/measurements.png?start=P30D&width=900&height=400")
         if response.status_code == 200:
-            # create PDF
-            pdf_path = arcpy.GetParameterAsText(1)
-            pdf = SimpleDocTemplate(pdf_path, pagesize=letter)
-            styles = getSampleStyleSheet()
-            content = []
-
-            # heading:
-            content.append(Paragraph("Flood Risk Analysis Report", styles["Title"]))
-            content.append(Spacer(1, 12))
-
-            # text
-            body = f"""
-            {risk_text} <br/>
-            Nearest river: {nearestName} <br/>
-            Distance to the nearest river: {distance}m <br/>
-            Width of the nearest river: {nearestWidth}m <br/>
-            {water_level_msg} <br/>
-            Water level history for the past 30 days:
-            """
-            content.append(Paragraph(body, styles["Normal"]))
-            content.append(Spacer(1, 12))
-
-            # chart image as a reportlab flowable
-            chart = Image(BytesIO(response.content), width=500, height=300)
-            chart.hAlign = "CENTER"
-            content.append(chart)
-
-            pdf.build(content)
-
-            arcpy.SetParameterAsText(1, pdf_path)
+            chart30d = response   
         else:
             arcpy.AddMessage("No water level history available for this station right now.")
+            chart30d = None
 
         # TODO add forecast
 
@@ -325,3 +300,89 @@ daily_data["rain_sum"] = daily_rain_sum
 daily_dataframe = pd.DataFrame(data = daily_data)
 arcpy.AddMessage("\nHere you can see the predicted amount of rain in mm for the next week at your selected place:")
 arcpy.AddMessage(daily_dataframe)
+
+
+
+
+# ----------- Build output PDF ------------------
+
+# initialize file
+pdf_path = arcpy.GetParameterAsText(1)
+pdf = SimpleDocTemplate(pdf_path, pagesize=letter)
+styles = getSampleStyleSheet()
+content = []
+
+# heading:
+content.append(Paragraph("Flood Risk Analysis Report", styles["Title"]))
+content.append(Spacer(1, 12))
+
+# subheading:
+# get coordinates of input point
+with arcpy.da.SearchCursor(selected_place, ["SHAPE@XY"]) as cursor:
+    for row in cursor:
+        x, y = row[0]
+        coords = f"{x}, {y}"
+# get current time and date
+now = datetime.now()
+subheading = f"""
+This report contains data to enable the reader to evaluate the flooding risk of the point {coords}. <br/>
+Report created at {now}.
+"""
+content.append(Paragraph(subheading, styles["Normal"]))
+content.append(Spacer(1, 20))
+
+# text
+body = f"""
+{risk_text} <br/> <br/>
+<b> Nearest river: </b> {nearestName} <br/>
+<b> Distance to the nearest river: </b> {distance}m <br/>
+<b> Width of the nearest river: </b> {nearestWidth}m <br/> <br/>
+{water_level_msg} <br/> <br/>
+<b>Water level history for the past 30 days:</b> 
+"""
+content.append(Paragraph(body, styles["Normal"]))
+content.append(Spacer(1, 12))
+
+# chart image as a reportlab flowable if it is available
+if chart30d:
+    chart = Image(BytesIO(chart30d.content), width=500, height=300)
+    #chart.hAlign = "CENTER"
+    content.append(chart) 
+else:
+    content.append(Paragraph("No water level history available for this station right now.", styles["Normal"]))
+content.append(Spacer(1, 12))
+
+# rain forecast
+rain_forecast = f"""
+<b> Rain forecast </b> in mm for the next week at your selected place: <br/>
+"""
+content.append(Paragraph(rain_forecast, styles["Normal"]))
+table = Table(
+      [[Paragraph(col) for col in daily_dataframe.columns]] + daily_dataframe.values.tolist(), 
+      style=[
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('LINEBELOW',(0,0), (-1,0), 1, colors.black),
+        ('INNERGRID', (0,0), (-1,-1), 0.25, colors.black),
+        ('BOX', (0,0), (-1,-1), 1, colors.black),
+        ('ROWBACKGROUNDS', (0,0), (-1,-1), [colors.lightgrey, colors.white])],
+      hAlign = 'LEFT')
+content.append(KeepTogether(table))
+content.append(Spacer(1, 12))
+
+# water level forecast
+water_forecast = f"""
+<b>Water level forecast</b> for the next (insert time period) for (river):  <br/>
+"""
+content.append(Paragraph(water_forecast, styles["Normal"]))
+content.append(Spacer(1, 30))
+
+#
+credit = "This report was created using the Flood Risk Analysis toolbox for ArcGIS by Lenja Fipper and Kian Jay Lenert, created in 2026."
+content.append(Paragraph(credit, styles["Normal"]))
+
+# build PDF
+pdf.build(content)
+
+arcpy.SetParameterAsText(1, pdf_path)
+
+arcpy.AddMessage("PDF successfully created.")
