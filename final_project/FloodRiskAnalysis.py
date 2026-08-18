@@ -13,6 +13,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib import colors
 from reportlab.platypus.flowables import KeepTogether
 from datetime import datetime
+import matplotlib.pyplot as plt
 
 
 ### --- input ---
@@ -217,6 +218,7 @@ def findNearestStation(json):
 
 
 # check if the API responds
+water_level_msg = ""
 response = requests.get(f"https://pegelonline.wsv.de/webservices/rest-api/v2/stations.json")
 json_data = response.json() if response and response.status_code == 200 else None
 if json_data:
@@ -254,7 +256,14 @@ if json_data:
             arcpy.AddMessage("No water level history available for this station right now.")
             chart30d = None
 
-        # TODO add forecast
+        # add forecast if it is available
+        url = f"https://www.pegelonline.wsv.de/webservices/rest-api/v2/stations/{station_id}/WV/measurements.csv?contentType=text/plain"
+        response = requests.get(url)
+        if response and response.status_code == 200:
+            csv = url
+        else: 
+            csv = None
+            arcpy.AddMessage("No water level forecast available for this station.")
 
     else: water_level_msg = water_level_msg + ("No water level data available for this station right now.")
 
@@ -343,7 +352,7 @@ body = f"""
 content.append(Paragraph(body, styles["Normal"]))
 content.append(Spacer(1, 12))
 
-# chart image as a reportlab flowable if it is available
+# water level history chart image as a reportlab flowable if it is available
 if chart30d:
     chart = Image(BytesIO(chart30d.content), width=500, height=300)
     #chart.hAlign = "CENTER"
@@ -370,13 +379,46 @@ content.append(KeepTogether(table))
 content.append(Spacer(1, 12))
 
 # water level forecast
-water_forecast = f"""
-<b>Water level forecast</b> for the next (insert time period) for (river):  <br/>
-"""
+if csv: 
+    # ceate chart
+    data = pd.read_csv(csv, sep=";")
+    data["timestamp"] = pd.to_datetime(data["timestamp"])
+    data["value"] = pd.to_numeric(data["value"], errors="coerce")
+    df = pd.DataFrame(data)
+    X = data['timestamp']
+    Y = data['value']
+    plt.figure(figsize=(10, 5))
+    plt.bar(X, Y, color="b")
+    plt.xlabel("Date")
+    plt.ylabel("Predicted water level")
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+
+    img_buffer = BytesIO()
+    plt.savefig(img_buffer, format="PNG", dpi=150)
+    plt.close()
+
+    img_buffer.seek(0)
+
+    chart_forecast = Image(
+        img_buffer,
+        width=500,
+        height=250
+    )
+
+    water_forecast = f"""
+    <b>Water level forecast</b>:  <br/>
+    """
+else: 
+    chart_forecast = None
+    water_forecast = "No water level forecast available for this station."
+
 content.append(Paragraph(water_forecast, styles["Normal"]))
+if chart_forecast:
+    content.append(chart_forecast)
 content.append(Spacer(1, 30))
 
-#
+# credit
 credit = "This report was created using the Flood Risk Analysis toolbox for ArcGIS by Lenja Fipper and Kian Jay Lenert, created in 2026."
 content.append(Paragraph(credit, styles["Normal"]))
 
