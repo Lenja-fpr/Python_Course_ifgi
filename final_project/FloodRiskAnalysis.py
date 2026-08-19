@@ -108,7 +108,7 @@ time.sleep(2)
 arcpy.analysis.Near(
     in_features= selected_place,
     near_features="gsk3e_gewkz_line_breite",
-    search_radius="1 Kilometers",
+    search_radius="5 Kilometers",
     location="LOCATION",
     angle="NO_ANGLE",
     method="PLANAR",
@@ -130,172 +130,178 @@ with arcpy.da.SearchCursor(selected_place, ["NEAR_DIST", "NEAR_FID", "SHAPE@"]) 
         longitude = point_wgs84.firstPoint.X
         latitude = point_wgs84.firstPoint.Y   
 
-where = f"FID = {near_fid}"
+#check if there is a river 5 km around the place
+if nearestDistance == -1:
+    arcpy.AddMessage("No river in NRW 5 km around the given place \nIMPORTANT: The analysis only works for places in NRW!")
 
-with arcpy.da.SearchCursor("gsk3e_gewkz_line_breite", ["FID", "GEWHNAME", "ST_BREITE"], where) as cur:
-    for row in cur:
-        nearestName = row[1]
-        nearestWidth = row[2]
+else:
+    #continue if there is a river
+    where = f"FID = {near_fid}"
 
-# output
-arcpy.AddMessage(f"Nearest river: {nearestName}")
-arcpy.AddMessage(f"Distance to the nearest river: {nearestDistance}m")
-arcpy.AddMessage(f"Width of the nearest river: {nearestWidth}m")
-
-
-# -------- Get water level data from the nearest river via an API ---------------
-
-#modify the progressor bar
-arcpy.SetProgressorLabel("Getting water level from nearest river")
-arcpy.SetProgressorPosition(3)
-time.sleep(2)
-
-river = nearestName.upper()
-
-# handle Umlaute in the river name for the API request
-if "Ä" in river:
-    river = river.replace("Ä", "%C3%84")
-if "Ö" in river:
-    river = river.replace("Ö", "%C3%96")
-if "Ü" in river:
-    river = river.replace("Ü", "%C3%9C")
-
-# hande spaces:
-if " " in river:
-    river = river.replace(" ", "%20")
-
-# function to find the nearest measuring station to a given point from a json list of stations 
-def findNearestStation(json):
-    # collect the uuids, names and coordinates of all stations in a list
-    stations_list = []
-    for station in json:
-        if 'longitude' in station:
-            uuid = station['uuid']
-            name = station['longname']
-            lon = station['longitude']
-            lat = station['latitude']
-            stations_list.append([uuid, name, (lon, lat)])
-        
-    # add the measuring stations to a feature class and add it to the map:
-    # get the currently active geodatabase
-    aprx = arcpy.mp.ArcGISProject("CURRENT")
-    map_obj = aprx.activeMap
-    gdb = aprx.defaultGeodatabase
-    fc_path = os.path.join(gdb, "measuring_stations")
-    # create a new featureclass (overwrite if it already exists)
-    for layer in map_obj.listLayers():
-        if layer.name == "measuring_stations":
-            if layer.isFeatureLayer:
-                layer_path = layer.dataSource
-            if os.path.normcase(layer_path) == os.path.normcase(fc_path):
-                map_obj.removeLayer(layer)
-                #del layer
-    if arcpy.Exists(fc_path):
-        arcpy.management.Delete(fc_path)
-    arcpy.management.CreateFeatureclass(gdb, "measuring_stations", "POINT", spatial_reference=arcpy.SpatialReference(4326))
-    # add fields to the featureclass
-    arcpy.management.AddField("measuring_stations", "uuid", "TEXT")
-    arcpy.management.AddField("measuring_stations", "name", "TEXT")
-    
-    # fill the featureclass with the data from the table
-    with arcpy.da.InsertCursor(fc_path, ["uuid", "name", "SHAPE@XY"]) as cursor:
-        for uuid, name, coordinates in stations_list:
-            cursor.insertRow([uuid, name, coordinates])
-    
-    # find nearest station
-    arcpy.analysis.Near(
-        in_features=selected_place,
-        near_features="measuring_stations",
-        location="LOCATION",
-        angle="NO_ANGLE",
-        method="PLANAR",
-        field_names="NEAR_FID NEAR_FID;NEAR_DIST NEAR_DIST;NEAR_X NEAR_X;NEAR_Y NEAR_Y",
-        distance_unit="Meters"
-    )
-
-    # get details of the nearest station
-    with arcpy.da.SearchCursor(
-        selected_place,
-        ["NEAR_DIST", "NEAR_FID"]
-    ) as cur:
-
+    with arcpy.da.SearchCursor("gsk3e_gewkz_line_breite", ["FID", "GEWHNAME", "ST_BREITE"], where) as cur:
         for row in cur:
-            distance = row[0]
-            near_fid = row[1]
-
-    # get the actual ObjectID field name of measuring_stations
-    oid_field = arcpy.Describe("measuring_stations").OIDFieldName
-
-    # find the station with the corresponding ObjectID
-    where = f"{arcpy.AddFieldDelimiters('measuring_stations', oid_field)} = {near_fid}"
-
-    with arcpy.da.SearchCursor(
-        "measuring_stations",
-        [oid_field, "uuid", "name"],
-        where
-    ) as cur:
-
-        for row in cur:
-            uuid = row[1]
-            station_name = row[2]
-
+            nearestName = row[1]
+            nearestWidth = row[2]
+    
     # output
-    arcpy.AddMessage(f"Station name: {station_name}")
-    station_id = uuid
-    return distance, station_id
-
-# check if the API responds
-response = requests.get(f"https://pegelonline.wsv.de/webservices/rest-api/v2/stations.json")
-json_data = response.json() if response and response.status_code == 200 else None
-water_level_msg = ""
-if json_data:
-    # check if threre is data available for the nearest river
-    response = requests.get(f"https://pegelonline.wsv.de/webservices/rest-api/v2/stations.json?waters={river}")
-    json_river_data = response.json() if response and response.status_code == 200 else None
-    if not json_river_data:
-        water_level_msg=f"No water levels available for the river {nearestName} via pegelonline API. The following water level data was measured at the nearest measuring station of any river: <br/>"
-        # find the nearest measuring station of any river and store its uuid in variable "station_id"
-        distance, station_id = findNearestStation(json_data)
-    else:
-        # find the nearest station for the river in question store its uuid in variable "station_id"
-        distance, station_id = findNearestStation(json_river_data)
-
-    # check if measurements are available for this station
-    response = requests.get(f"https://pegelonline.wsv.de/webservices/rest-api/v2/stations/{station_id}.json?includeTimeseries=true&includeCurrentMeasurement=true")
+    arcpy.AddMessage(f"Nearest river: {nearestName}")
+    arcpy.AddMessage(f"Distance to the nearest river: {nearestDistance}m")
+    arcpy.AddMessage(f"Width of the nearest river: {nearestWidth}m")
+    
+    
+    # -------- Get water level data from the nearest river via an API ---------------
+    
+    #modify the progressor bar
+    arcpy.SetProgressorLabel("Getting water level from nearest river")
+    arcpy.SetProgressorPosition(3)
+    time.sleep(2)
+    
+    river = nearestName.upper()
+    
+    # handle Umlaute in the river name for the API request
+    if "Ä" in river:
+        river = river.replace("Ä", "%C3%84")
+    if "Ö" in river:
+        river = river.replace("Ö", "%C3%96")
+    if "Ü" in river:
+        river = river.replace("Ü", "%C3%9C")
+    
+    # hande spaces:
+    if " " in river:
+        river = river.replace(" ", "%20")
+    
+    # function to find the nearest measuring station to a given point from a json list of stations 
+    def findNearestStation(json):
+        # collect the uuids, names and coordinates of all stations in a list
+        stations_list = []
+        for station in json:
+            if 'longitude' in station:
+                uuid = station['uuid']
+                name = station['longname']
+                lon = station['longitude']
+                lat = station['latitude']
+                stations_list.append([uuid, name, (lon, lat)])
+            
+        # add the measuring stations to a feature class and add it to the map:
+        # get the currently active geodatabase
+        aprx = arcpy.mp.ArcGISProject("CURRENT")
+        map_obj = aprx.activeMap
+        gdb = aprx.defaultGeodatabase
+        fc_path = os.path.join(gdb, "measuring_stations")
+        # create a new featureclass (overwrite if it already exists)
+        for layer in map_obj.listLayers():
+            if layer.name == "measuring_stations":
+                if layer.isFeatureLayer:
+                    layer_path = layer.dataSource
+                if os.path.normcase(layer_path) == os.path.normcase(fc_path):
+                    map_obj.removeLayer(layer)
+                    #del layer
+        if arcpy.Exists(fc_path):
+            arcpy.management.Delete(fc_path)
+        arcpy.management.CreateFeatureclass(gdb, "measuring_stations", "POINT", spatial_reference=arcpy.SpatialReference(4326))
+        # add fields to the featureclass
+        arcpy.management.AddField("measuring_stations", "uuid", "TEXT")
+        arcpy.management.AddField("measuring_stations", "name", "TEXT")
+        
+        # fill the featureclass with the data from the table
+        with arcpy.da.InsertCursor(fc_path, ["uuid", "name", "SHAPE@XY"]) as cursor:
+            for uuid, name, coordinates in stations_list:
+                cursor.insertRow([uuid, name, coordinates])
+        
+        # find nearest station
+        arcpy.analysis.Near(
+            in_features=selected_place,
+            near_features="measuring_stations",
+            location="LOCATION",
+            angle="NO_ANGLE",
+            method="PLANAR",
+            field_names="NEAR_FID NEAR_FID;NEAR_DIST NEAR_DIST;NEAR_X NEAR_X;NEAR_Y NEAR_Y",
+            distance_unit="Meters"
+        )
+    
+        # get details of the nearest station
+        with arcpy.da.SearchCursor(
+            selected_place,
+            ["NEAR_DIST", "NEAR_FID"]
+        ) as cur:
+    
+            for row in cur:
+                distance = row[0]
+                near_fid = row[1]
+    
+        # get the actual ObjectID field name of measuring_stations
+        oid_field = arcpy.Describe("measuring_stations").OIDFieldName
+    
+        # find the station with the corresponding ObjectID
+        where = f"{arcpy.AddFieldDelimiters('measuring_stations', oid_field)} = {near_fid}"
+    
+        with arcpy.da.SearchCursor(
+            "measuring_stations",
+            [oid_field, "uuid", "name"],
+            where
+        ) as cur:
+    
+            for row in cur:
+                uuid = row[1]
+                station_name = row[2]
+    
+        # output
+        arcpy.AddMessage(f"Station name: {station_name}")
+        station_id = uuid
+        return distance, station_id
+    
+    # check if the API responds
+    response = requests.get(f"https://pegelonline.wsv.de/webservices/rest-api/v2/stations.json")
     json_data = response.json() if response and response.status_code == 200 else None
     water_level_msg = ""
     if json_data:
-        # build water level info text
-        water_level_msg = water_level_msg +(f"""Water level for the river {json_data['water']['longname']} 
-            in {json_data['longname']} 
-            at {json_data['timeseries'][0]['currentMeasurement']['timestamp']}:
-            <b> {json_data['timeseries'][0]['currentMeasurement']['value']}{json_data['timeseries'][0]['unit']}</b>. <br/>
-            <b> Distance to measuring station: </b> {distance}m""")
-        if(('stateMnwMhw' in json_data['timeseries'][0]['currentMeasurement']) and (json_data['timeseries'][0]['currentMeasurement']['stateMnwMhw'] != "unknown")):
-            water_level_msg = water_level_msg + (f"<br/> The current water level is <b> {json_data['timeseries'][0]['currentMeasurement']['stateMnwMhw']} </b> for this river.")
-        # print water level info
-        arcpy.AddMessage(water_level_msg)
-
-        # get time series image of the past 30 days water levels
-        response = requests.get(f"https://pegelonline.wsv.de/webservices/rest-api/v2/stations/{station_id}/W/measurements.png?start=P30D&width=900&height=400")
-        if response.status_code == 200:
-            chart30d = response   
+        # check if threre is data available for the nearest river
+        response = requests.get(f"https://pegelonline.wsv.de/webservices/rest-api/v2/stations.json?waters={river}")
+        json_river_data = response.json() if response and response.status_code == 200 else None
+        if not json_river_data:
+            water_level_msg=f"No water levels available for the river {nearestName} via pegelonline API. The following water level data was measured at the nearest measuring station of any river: <br/>"
+            # find the nearest measuring station of any river and store its uuid in variable "station_id"
+            distance, station_id = findNearestStation(json_data)
         else:
-            arcpy.AddMessage("No water level history available for this station right now.")
-            chart30d = None
-
-        # add forecast if it is available
-        url = f"https://www.pegelonline.wsv.de/webservices/rest-api/v2/stations/{station_id}/WV/measurements.csv?contentType=text/plain"
-        response = requests.get(url)
-        if response and response.status_code == 200:
-            csv = pd.read_csv(StringIO(response.text), sep=";")
-        else: 
-            csv = None
-            arcpy.AddMessage("No water level forecast available for this station.")
-
-    else: water_level_msg = water_level_msg + ("No water level data available for this station right now.")
-
-else: water_level_msg = "No water levels available; the API does not respond."
+            # find the nearest station for the river in question store its uuid in variable "station_id"
+            distance, station_id = findNearestStation(json_river_data)
+    
+        # check if measurements are available for this station
+        response = requests.get(f"https://pegelonline.wsv.de/webservices/rest-api/v2/stations/{station_id}.json?includeTimeseries=true&includeCurrentMeasurement=true")
+        json_data = response.json() if response and response.status_code == 200 else None
+        water_level_msg = ""
+        if json_data:
+            # build water level info text
+            water_level_msg = water_level_msg +(f"""Water level for the river {json_data['water']['longname']} 
+                in {json_data['longname']} 
+                at {json_data['timeseries'][0]['currentMeasurement']['timestamp']}:
+                <b> {json_data['timeseries'][0]['currentMeasurement']['value']}{json_data['timeseries'][0]['unit']}</b>. <br/>
+                <b> Distance to measuring station: </b> {distance}m""")
+            if(('stateMnwMhw' in json_data['timeseries'][0]['currentMeasurement']) and (json_data['timeseries'][0]['currentMeasurement']['stateMnwMhw'] != "unknown")):
+                water_level_msg = water_level_msg + (f"<br/> The current water level is <b> {json_data['timeseries'][0]['currentMeasurement']['stateMnwMhw']} </b> for this river.")
+            # print water level info
+            arcpy.AddMessage(water_level_msg)
+    
+            # get time series image of the past 30 days water levels
+            response = requests.get(f"https://pegelonline.wsv.de/webservices/rest-api/v2/stations/{station_id}/W/measurements.png?start=P30D&width=900&height=400")
+            if response.status_code == 200:
+                chart30d = response   
+            else:
+                arcpy.AddMessage("No water level history available for this station right now.")
+                chart30d = None
+    
+            # add forecast if it is available
+            url = f"https://www.pegelonline.wsv.de/webservices/rest-api/v2/stations/{station_id}/WV/measurements.csv?contentType=text/plain"
+            response = requests.get(url)
+            if response and response.status_code == 200:
+                csv = pd.read_csv(StringIO(response.text), sep=";")
+            else: 
+                csv = None
+                arcpy.AddMessage("No water level forecast available for this station.")
+    
+        else: water_level_msg = water_level_msg + ("No water level data available for this station right now.")
+    
+    else: water_level_msg = "No water levels available; the API does not respond."
 
 
 # ---------- Weather forecast ------------------
@@ -388,25 +394,33 @@ content.append(Paragraph(subheading, styles["Normal"]))
 content.append(Spacer(1, 20))
 
 # text
-body = f"""
-{risk_text} <br/> <br/>
-<b> Nearest river: </b> {nearestName} <br/>
-<b> Distance to the nearest river: </b> {nearestDistance}m <br/>
-<b> Width of the nearest river: </b> {nearestWidth}m <br/> <br/>
-{water_level_msg} <br/> <br/>
-<b>Water level history for the past 30 days:</b> 
-"""
-content.append(Paragraph(body, styles["Normal"]))
-content.append(Spacer(1, 12))
-
-# water level history chart image as a reportlab flowable if it is available
-if chart30d:
-    chart = Image(BytesIO(chart30d.content), width=500, height=300)
-    #chart.hAlign = "CENTER"
-    content.append(chart) 
+if nearestDistance == -1:
+    body = f"""
+    {risk_text} <br/> <br/>
+    <b> There is no river in NRW that is located in a distance of 5 km around the given place</b><br/>
+    """
+    content.append(Paragraph(body, styles["Normal"]))
+    content.append(Spacer(1, 12))
 else:
-    content.append(Paragraph("No water level history available for this station right now.", styles["Normal"]))
-content.append(Spacer(1, 12))
+    body = f"""
+    {risk_text} <br/> <br/>
+    <b> Nearest river: </b> {nearestName} <br/>
+    <b> Distance to the nearest river: </b> {nearestDistance}m <br/>
+    <b> Width of the nearest river: </b> {nearestWidth}m <br/> <br/>
+    {water_level_msg} <br/> <br/>
+    <b>Water level history for the past 30 days:</b> 
+    """
+    content.append(Paragraph(body, styles["Normal"]))
+    content.append(Spacer(1, 12))
+
+    # water level history chart image as a reportlab flowable if it is available
+    if chart30d:
+        chart = Image(BytesIO(chart30d.content), width=500, height=300)
+        #chart.hAlign = "CENTER"
+        content.append(chart) 
+    else:
+        content.append(Paragraph("No water level history available for this station right now.", styles["Normal"]))
+    content.append(Spacer(1, 12))
 
 # rain forecast
 rain_forecast = f"""
@@ -426,44 +440,45 @@ content.append(KeepTogether(table))
 content.append(Spacer(1, 12))
 
 # water level forecast
-if csv is not None and not csv.empty:
-    # ceate chart
-    data = csv
-    data["timestamp"] = pd.to_datetime(data["timestamp"])
-    data["value"] = pd.to_numeric(data["value"], errors="coerce")
-    df = pd.DataFrame(data)
-    X = data['timestamp']
-    Y = data['value']
-    plt.figure(figsize=(10, 5))
-    plt.bar(X, Y, color="b")
-    plt.xlabel("Date")
-    plt.ylabel("Predicted water level")
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-
-    img_buffer = BytesIO()
-    plt.savefig(img_buffer, format="PNG", dpi=150)
-    plt.close()
-
-    img_buffer.seek(0)
-
-    chart_forecast = Image(
-        img_buffer,
-        width=500,
-        height=250
-    )
-
-    water_forecast = f"""
-    <b>Water level forecast</b>:  <br/>
-    """
-else: 
-    chart_forecast = None
-    water_forecast = "No water level forecast available for this station."
-
-content.append(Paragraph(water_forecast, styles["Normal"]))
-if chart_forecast:
-    content.append(chart_forecast)
-content.append(Spacer(1, 30))
+if nearestDistance != -1:
+    if csv is not None and not csv.empty:
+        # ceate chart
+        data = csv
+        data["timestamp"] = pd.to_datetime(data["timestamp"])
+        data["value"] = pd.to_numeric(data["value"], errors="coerce")
+        df = pd.DataFrame(data)
+        X = data['timestamp']
+        Y = data['value']
+        plt.figure(figsize=(10, 5))
+        plt.bar(X, Y, color="b")
+        plt.xlabel("Date")
+        plt.ylabel("Predicted water level")
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+    
+        img_buffer = BytesIO()
+        plt.savefig(img_buffer, format="PNG", dpi=150)
+        plt.close()
+    
+        img_buffer.seek(0)
+    
+        chart_forecast = Image(
+            img_buffer,
+            width=500,
+            height=250
+        )
+    
+        water_forecast = f"""
+        <b>Water level forecast</b>:  <br/>
+        """
+    else: 
+        chart_forecast = None
+        water_forecast = "No water level forecast available for this station."
+    
+    content.append(Paragraph(water_forecast, styles["Normal"]))
+    if chart_forecast:
+        content.append(chart_forecast)
+    content.append(Spacer(1, 30))
 
 # credit
 credit = "This report was created using the Flood Risk Analysis toolbox for ArcGIS by Lenja Fipper and Kian Jay Lenert, created in 2026."
