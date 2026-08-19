@@ -7,6 +7,7 @@ import requests_cache
 from retry_requests import retry
 import os
 from io import BytesIO
+from io import StringIO
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table
 from reportlab.lib.styles import getSampleStyleSheet
@@ -319,7 +320,7 @@ if json_data:
         url = f"https://www.pegelonline.wsv.de/webservices/rest-api/v2/stations/{station_id}/WV/measurements.csv?contentType=text/plain"
         response = requests.get(url)
         if response and response.status_code == 200:
-            csv = url
+            csv = pd.read_csv(StringIO(response.text), sep=";")
         else: 
             csv = None
             arcpy.AddMessage("No water level forecast available for this station.")
@@ -448,9 +449,9 @@ content.append(KeepTogether(table))
 content.append(Spacer(1, 12))
 
 # water level forecast
-if csv: 
+if csv is not None and not csv.empty:
     # ceate chart
-    data = pd.read_csv(csv, sep=";")
+    data = csv
     data["timestamp"] = pd.to_datetime(data["timestamp"])
     data["value"] = pd.to_numeric(data["value"], errors="coerce")
     df = pd.DataFrame(data)
