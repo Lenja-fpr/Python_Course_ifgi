@@ -16,6 +16,9 @@ from reportlab.platypus.flowables import KeepTogether
 from datetime import datetime
 import matplotlib.pyplot as plt
 
+#initialize progress bar
+arcpy.SetProgressor("step", "Starting flood risk analysis", 0, 6, 0)
+
 
 ### --- input ---
 selected_place = arcpy.GetParameterAsText(0)
@@ -30,6 +33,11 @@ if selected_place_features < 1:
     
 
 ### --- Compare the selected place to the flood risk map of NRW ---
+
+#modify the progressor bar
+arcpy.SetProgressorLabel("Comparing to 'Hochwasserrisikokarte NRW'")
+arcpy.SetProgressorPosition(1)
+time.sleep(2)
 
 # is the point inside an area with a high risk?
 # check by using select by location
@@ -48,13 +56,10 @@ if int(arcpy.management.GetCount("ueberflutungsgrenzen_hohe_wahrscheinlichkeit")
     arcpy.SelectLayerByAttribute_management("ueberflutungsgrenzen_hohe_wahrscheinlichkeit","CLEAR_SELECTION")
 
 else:
-
-    ### --- Compare the selected place to the Floodrisk Map of NRW ---
-    
-    # is the point inside an area with a high risk?
+    # is the point inside an area with a moderate risk?
     # check by using select by location
     arcpy.management.SelectLayerByLocation(
-        in_layer="ueberflutungsgrenzen_hohe_wahrscheinlichkeit",
+        in_layer="ueberflutungsgrenzen_mittlere_wahrscheinlichkeit",
         overlap_type="INTERSECT",
         select_features=selected_place,
         selection_type="NEW_SELECTION",
@@ -66,80 +71,37 @@ else:
 
         #clear the selection
         arcpy.SelectLayerByAttribute_management("ueberflutungsgrenzen_mittlere_wahrscheinlichkeit","CLEAR_SELECTION")
-
-        # clear the selection
-        arcpy.SelectLayerByAttribute_management("ueberflutungsgrenzen_hohe_wahrscheinlichkeit","CLEAR_SELECTION")
-    
     else:
-        # is the point in an area with a middle risk?
+        # is the point in an area with a low risk?
         # check by using select by location
         arcpy.management.SelectLayerByLocation(
-            in_layer="ueberflutungsgrenzen_mittlere_wahrscheinlichkeit",
+            in_layer="ueberflutungsgrenzen_niedrige wahrscheinlichkeit",
             overlap_type="INTERSECT",
             select_features=selected_place,
             selection_type="NEW_SELECTION",
             invert_spatial_relationship="NOT_INVERT"
         )
         #check if a feature is selected
-        if int(arcpy.management.GetCount("ueberflutungsgrenzen_mittlere_wahrscheinlichkeit")[0]) != 0:
-            risk_text = "The given place is located in an area with a moderate risk of flooding"
-        
+        if int(arcpy.management.GetCount("ueberflutungsgrenzen_niedrige Wahrscheinlichkeit")[0]) != 0:
+            risk_text = "The given place is located in an area with a low risk of flooding (compared to the 'Hochwasser-Gefahrenkarte NRW')."
+            
             #clear the selection
-            arcpy.SelectLayerByAttribute_management("ueberflutungsgrenzen_mittlere_wahrscheinlichkeit","CLEAR_SELECTION")
-    
+            arcpy.SelectLayerByAttribute_management("ueberflutungsgrenzen_niedrige Wahrscheinlichkeit","CLEAR_SELECTION")
+
         else:
-            # is the point in an area with a low risk?
-            #check by using select by location
-            arcpy.management.SelectLayerByLocation(
-                in_layer="ueberflutungsgrenzen_niedrige Wahrscheinlichkeit",
-                overlap_type="INTERSECT",
-                select_features=selected_place,
-                selection_type="NEW_SELECTION",
-                invert_spatial_relationship="NOT_INVERT"
-            )
-            #check if a feature is selected
-            if int(arcpy.management.GetCount("ueberflutungsgrenzen_niedrige Wahrscheinlichkeit")[0]) != 0:
-                risk_text = "The given place is located in an area with a low risk of flooding (compared to the 'Hochwasser-Gefahrenkarte NRW')."
-                
-                #clear the selection
-                arcpy.SelectLayerByAttribute_management("ueberflutungsgrenzen_niedrige Wahrscheinlichkeit","CLEAR_SELECTION")
-    
-            else:
-                # the point is in an area without a risk
-                risk_text = f"The given place is located in an area without risk of flooding (compared to the 'Hochwasser-Gefahrenkarte NRW')."
-    
+            # the point is in an area without a risk
+            risk_text = f"The given place is located in an area without risk of flooding (compared to the 'Hochwasser-Gefahrenkarte NRW')."
+
 # show the risk_text
 arcpy.AddMessage(risk_text)
 
 
 ### --- find the nearest river ---
-# get nearest river
-arcpy.analysis.Near(
-    in_features= selected_place,
-    near_features="gsk3e_gewkz_line_breite",
-    search_radius="1 Kilometers",
-    location="LOCATION",
-    angle="NO_ANGLE",
-    method="PLANAR",
-    field_names="NEAR_FID NEAR_FID;NEAR_DIST NEAR_DIST;NEAR_X NEAR_X;NEAR_Y NEAR_Y",
-    distance_unit="Meters"
-)
 
-# get datails of the nearest river
-with arcpy.da.SearchCursor(selected_place, ["NEAR_DIST", "NEAR_FID", "SHAPE@"]) as cur:
-    for row in cur:
-        distance = round(row[0],2) # distance to the closest river (rounded to 2 decimal places)
-        near_fid = row[1] # ObjectID of the closest river
-        point = row[2] # get the location of the selected place
-
-        #get the location as lat or long
-        point_wgs84 = point.projectAs(
-            arcpy.SpatialReference(4326)
-        )
-        longitude = point_wgs84.firstPoint.X
-        latitude = point_wgs84.firstPoint.Y   
-
-where = f"FID = {near_fid}"
+#modify the progressor bar
+arcpy.SetProgressorLabel("Finding the nearest river")
+arcpy.SetProgressorPosition(2)
+time.sleep(2)
 
 ### --- find the nearest river ---
 # get nearest river
@@ -157,7 +119,7 @@ arcpy.analysis.Near(
 # get datails of the nearest river
 with arcpy.da.SearchCursor(selected_place, ["NEAR_DIST", "NEAR_FID", "SHAPE@"]) as cur:
     for row in cur:
-        distance = round(row[0],2) # distance to the closest river (rounded to 2 decimal places)
+        nearestDistance = round(row[0],2) # distance to the closest river (rounded to 2 decimal places)
         near_fid = row[1] # ObjectID of the closest river
         point = row[2] # get the location of the selected place
 
@@ -177,11 +139,16 @@ with arcpy.da.SearchCursor("gsk3e_gewkz_line_breite", ["FID", "GEWHNAME", "ST_BR
 
 # output
 arcpy.AddMessage(f"Nearest river: {nearestName}")
-arcpy.AddMessage(f"Distance to the nearest river: {distance}m")
+arcpy.AddMessage(f"Distance to the nearest river: {nearestDistance}m")
 arcpy.AddMessage(f"Width of the nearest river: {nearestWidth}m")
 
 
 # -------- Get water level data from the nearest river via an API ---------------
+
+#modify the progressor bar
+arcpy.SetProgressorLabel("Getting water level from nearest river")
+arcpy.SetProgressorPosition(3)
+time.sleep(2)
 
 river = nearestName.upper()
 
@@ -338,6 +305,11 @@ else: water_level_msg = "No water levels available; the API does not respond."
 # only check the Open-Meteo API if needed
 if int(rain_forecast) >= 1:
 
+    #modify the progressor bar
+    arcpy.SetProgressorLabel("Getting weather forecast for your place")
+    arcpy.SetProgressorPosition(4)
+    time.sleep(2)
+    
     #the api can give forecasts up to 15 days, check if the requested number of days is higher
     if int(rain_forecast) > 15:
         arcpy.AddMessage(f"\nRain forecast is not possible for {rain_forecast} days,\nwe can show you the predicted amount of rain in mm for the next 15 days at your selected place instead:")
@@ -386,6 +358,11 @@ if int(rain_forecast) >= 1:
 
 # ----------- Build output PDF ------------------
 
+#modify the progressor bar
+arcpy.SetProgressorLabel("Building output PDF")
+arcpy.SetProgressorPosition(5)
+time.sleep(2)
+
 # initialize file 
 pdf = SimpleDocTemplate(pdf_path, pagesize=letter)
 styles = getSampleStyleSheet()
@@ -414,7 +391,7 @@ content.append(Spacer(1, 20))
 body = f"""
 {risk_text} <br/> <br/>
 <b> Nearest river: </b> {nearestName} <br/>
-<b> Distance to the nearest river: </b> {distance}m <br/>
+<b> Distance to the nearest river: </b> {nearestDistance}m <br/>
 <b> Width of the nearest river: </b> {nearestWidth}m <br/> <br/>
 {water_level_msg} <br/> <br/>
 <b>Water level history for the past 30 days:</b> 
@@ -498,3 +475,8 @@ pdf.build(content)
 arcpy.SetParameterAsText(2, pdf_path)
 
 arcpy.AddMessage("PDF successfully created.")
+
+#modify the progressor bar
+arcpy.SetProgressorLabel("Analysis completed")
+arcpy.SetProgressorPosition(6)
+time.sleep(1)
