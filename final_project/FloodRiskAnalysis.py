@@ -20,6 +20,7 @@ import matplotlib.pyplot as plt
 ### --- input ---
 selected_place = arcpy.GetParameterAsText(0)
 rain_forecast = arcpy.GetParameterAsText(1)
+pdf_path = arcpy.GetParameterAsText(2)
 
 #test if selected_place contains a feature and throw an error if its true
 selected_place_features = int(arcpy.management.GetCount(selected_place)[0])
@@ -385,8 +386,7 @@ if int(rain_forecast) >= 1:
 
 # ----------- Build output PDF ------------------
 
-# initialize file
-pdf_path = arcpy.GetParameterAsText(1)
+# initialize file 
 pdf = SimpleDocTemplate(pdf_path, pagesize=letter)
 styles = getSampleStyleSheet()
 content = []
@@ -495,6 +495,6 @@ content.append(Paragraph(credit, styles["Normal"]))
 # build PDF
 pdf.build(content)
 
-arcpy.SetParameterAsText(1, pdf_path)
+arcpy.SetParameterAsText(2, pdf_path)
 
 arcpy.AddMessage("PDF successfully created.")
