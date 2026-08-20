@@ -16,7 +16,7 @@ from reportlab.platypus.flowables import KeepTogether
 from datetime import datetime
 import matplotlib.pyplot as plt
 
-#initialize progress bar
+# initialize progress bar
 arcpy.SetProgressor("step", "Starting flood risk analysis", 0, 6, 0)
 
 
@@ -25,14 +25,16 @@ selected_place = arcpy.GetParameterAsText(0)
 rain_forecast = arcpy.GetParameterAsText(1)
 pdf_path = arcpy.GetParameterAsText(2)
 
-#test if selected_place contains a feature and throw an error if its true
+#test if selected_place contains a feature and throw an error if it does not
 selected_place_features = int(arcpy.management.GetCount(selected_place)[0])
         
 if selected_place_features < 1:
     arcpy.AddError("'Your Place'-Input Layer should contain a Feature")
     
 
-### --- Compare the selected place to the flood risk map of NRW ---
+
+
+### ---------------------- Compare the selected place to the flood risk map of NRW ----------------------
 
 #modify the progressor bar
 arcpy.SetProgressorLabel("Comparing to 'Hochwasserrisikokarte NRW'")
@@ -96,7 +98,9 @@ else:
 arcpy.AddMessage(risk_text)
 
 
-### --- find the nearest river ---
+
+
+### ---------------------- find the nearest river ----------------------
 
 #modify the progressor bar
 arcpy.SetProgressorLabel("Finding the nearest river")
@@ -147,9 +151,11 @@ else:
     arcpy.AddMessage(f"Nearest river: {nearestName}")
     arcpy.AddMessage(f"Distance to the nearest river: {nearestDistance}m")
     arcpy.AddMessage(f"Width of the nearest river: {nearestWidth}m")
+
+
     
     
-    # -------- Get water level data from the nearest river via an API ---------------
+    ### ---------------------- Get water level data from the nearest river via an API ----------------------
     
     #modify the progressor bar
     arcpy.SetProgressorLabel("Getting water level from nearest river")
@@ -276,7 +282,7 @@ else:
                 in {json_data['longname']} 
                 at {json_data['timeseries'][0]['currentMeasurement']['timestamp']}:
                 <b> {json_data['timeseries'][0]['currentMeasurement']['value']}{json_data['timeseries'][0]['unit']}</b>. <br/>
-                <b> Distance to measuring station: </b> {distance}m""")
+                <b> Distance to measuring station: </b> {round(distance, 2)}m""")
             if(('stateMnwMhw' in json_data['timeseries'][0]['currentMeasurement']) and (json_data['timeseries'][0]['currentMeasurement']['stateMnwMhw'] != "unknown")):
                 water_level_msg = water_level_msg + (f"<br/> The current water level is <b> {json_data['timeseries'][0]['currentMeasurement']['stateMnwMhw']} </b> for this river.")
             # print water level info
@@ -304,7 +310,9 @@ else:
     else: water_level_msg = "No water levels available; the API does not respond."
 
 
-# ---------- Weather forecast ------------------
+
+
+### ---------------------- Weather forecast ----------------------
 
 # weather forecast with Open-Meteo API
     
@@ -362,7 +370,9 @@ if int(rain_forecast) >= 1:
     arcpy.AddMessage(daily_dataframe)
 
 
-# ----------- Build output PDF ------------------
+
+
+### ---------------------- Build output PDF ----------------------
 
 #modify the progressor bar
 arcpy.SetProgressorLabel("Building output PDF")
@@ -383,11 +393,19 @@ content.append(Spacer(1, 12))
 with arcpy.da.SearchCursor(selected_place, ["SHAPE@XY"]) as cursor:
     for row in cursor:
         x, y = row[0]
-        coords = f"{x}, {y}"
+# transform coordinates to degrees
+sr_source = arcpy.SpatialReference(25832)
+sr_target = arcpy.SpatialReference(4326)
+pt_proj = arcpy.PointGeometry(arcpy.Point(x, y), sr_source)
+pt_deg = pt_proj.projectAs(sr_target)
+lon = round(pt_deg.firstPoint.X, 2)
+lat = round(pt_deg.firstPoint.Y, 2)
+coords = f"{lon}, {lat}"
 # get current time and date
 now = datetime.now()
+# write the text
 subheading = f"""
-This report contains data to enable the reader to evaluate the flooding risk of the point {coords}. <br/>
+This report contains data to enable the reader to evaluate the flooding risk at the point <b> {coords} </b>. <br/>
 Report created at {now}.
 """
 content.append(Paragraph(subheading, styles["Normal"]))
@@ -397,7 +415,7 @@ content.append(Spacer(1, 20))
 if nearestDistance == -1:
     body = f"""
     {risk_text} <br/> <br/>
-    <b> There is no river in NRW that is located in a distance of 5 km around the given place</b><br/>
+    <b> There is no river in NRW that is located within 5 km of the given location.</b><br/>
     """
     content.append(Paragraph(body, styles["Normal"]))
     content.append(Spacer(1, 12))
@@ -405,8 +423,8 @@ else:
     body = f"""
     {risk_text} <br/> <br/>
     <b> Nearest river: </b> {nearestName} <br/>
-    <b> Distance to the nearest river: </b> {nearestDistance}m <br/>
-    <b> Width of the nearest river: </b> {nearestWidth}m <br/> <br/>
+    <b> Distance to the nearest river: </b> {round(nearestDistance, 2)}m <br/>
+    <b> Width of the nearest river: </b> {round(nearestWidth, 2)}m <br/> <br/>
     {water_level_msg} <br/> <br/>
     <b>Water level history for the past 30 days:</b> 
     """
@@ -491,7 +509,7 @@ arcpy.SetParameterAsText(2, pdf_path)
 
 arcpy.AddMessage("PDF successfully created.")
 
-#modify the progressor bar
+# modify the progressor bar
 arcpy.SetProgressorLabel("Analysis completed")
 arcpy.SetProgressorPosition(6)
 time.sleep(1)
