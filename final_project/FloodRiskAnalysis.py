@@ -136,7 +136,7 @@ with arcpy.da.SearchCursor(selected_place, ["NEAR_DIST", "NEAR_FID", "SHAPE@"]) 
 
 #check if there is a river 5 km around the place
 if nearestDistance == -1:
-    arcpy.AddMessage("No river in NRW 5 km around the given place \nIMPORTANT: The analysis only works for places in NRW!")
+    arcpy.AddMessage("No river in NRW within 5 km of the given place \nIMPORTANT: The analysis only works for places in NRW!")
 
 else:
     #continue if there is a river
@@ -405,7 +405,7 @@ coords = f"{lon}, {lat}"
 now = datetime.now()
 # write the text
 subheading = f"""
-This report contains data to enable the reader to evaluate the flooding risk at the point <b> {coords} </b>. <br/>
+This report contains data to enable the reader to evaluate the flooding risk at the point <b>{coords}</b>. <br/>
 Report created at {now}.
 """
 content.append(Paragraph(subheading, styles["Normal"]))
@@ -440,22 +440,40 @@ else:
         content.append(Paragraph("No water level history available for this station right now.", styles["Normal"]))
     content.append(Spacer(1, 12))
 
-# rain forecast
-rain_forecast = f"""
-<b> Rain forecast </b> in mm for the next week at your selected place: <br/>
-"""
-content.append(Paragraph(rain_forecast, styles["Normal"]))
-table = Table(
-      [[Paragraph(col) for col in daily_dataframe.columns]] + daily_dataframe.values.tolist(), 
-      style=[
-        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('LINEBELOW',(0,0), (-1,0), 1, colors.black),
-        ('INNERGRID', (0,0), (-1,-1), 0.25, colors.black),
-        ('BOX', (0,0), (-1,-1), 1, colors.black),
-        ('ROWBACKGROUNDS', (0,0), (-1,-1), [colors.lightgrey, colors.white])],
-      hAlign = 'LEFT')
-content.append(KeepTogether(table))
+# rain forecast chart
+if daily_dataframe is not None and not daily_dataframe.empty:
+    data = daily_dataframe
+    data["date"] = pd.to_datetime(data["date"])
+    data["rain_sum"] = pd.to_numeric(data["rain_sum"], errors="coerce")
+    df = pd.DataFrame(data)
+    X = data['date']
+    Y = data['rain_sum']
+    plt.figure(figsize=(10, 5))
+    plt.bar(X, Y, color="b")
+    plt.grid()
+    plt.title(f"Rain forecast for the next {rain_forecast} days", fontsize=12, fontweight='bold')
+    plt.xlabel("Date")
+    plt.ylabel("Predicted amount of rain in mm")
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+
+    img_buffer = BytesIO()
+    plt.savefig(img_buffer, format="PNG", dpi=150)
+    plt.close()
+
+    img_buffer.seek(0)
+
+    chart_rain_forecast = Image(
+        img_buffer,
+        width=500,
+        height=250
+    )
+    
+    content.append(chart_rain_forecast)
+else:
+    content.append(Paragraph("No rain forecast available.", styles["Normal"]))
 content.append(Spacer(1, 12))
+
 
 # water level forecast
 if nearestDistance != -1:
@@ -468,7 +486,9 @@ if nearestDistance != -1:
         X = data['timestamp']
         Y = data['value']
         plt.figure(figsize=(10, 5))
-        plt.bar(X, Y, color="b")
+        plt.plot(X, Y, color="b")
+        plt.grid()
+        plt.title(f"Water level forecast", fontsize=12, fontweight='bold')
         plt.xlabel("Date")
         plt.ylabel("Predicted water level")
         plt.xticks(rotation=45)
@@ -485,17 +505,9 @@ if nearestDistance != -1:
             width=500,
             height=250
         )
-    
-        water_forecast = f"""
-        <b>Water level forecast</b>:  <br/>
-        """
-    else: 
-        chart_forecast = None
-        water_forecast = "No water level forecast available for this station."
-    
-    content.append(Paragraph(water_forecast, styles["Normal"]))
-    if chart_forecast:
         content.append(chart_forecast)
+    else: 
+        content.append(Paragraph("No water level forecast available for this station.", styles["Normal"]))
     content.append(Spacer(1, 30))
 
 # credit
