@@ -379,14 +379,17 @@ arcpy.SetProgressorLabel("Building output PDF")
 arcpy.SetProgressorPosition(5)
 time.sleep(2)
 
+
 # initialize file 
 pdf = SimpleDocTemplate(pdf_path, pagesize=letter)
 styles = getSampleStyleSheet()
 content = []
 
+
 # heading:
 content.append(Paragraph("Flood Risk Analysis Report", styles["Title"]))
 content.append(Spacer(1, 12))
+
 
 # subheading:
 # get coordinates of input point
@@ -410,6 +413,7 @@ Report created at {now}.
 """
 content.append(Paragraph(subheading, styles["Normal"]))
 content.append(Spacer(1, 20))
+
 
 # text
 if nearestDistance == -1:
@@ -439,40 +443,6 @@ else:
     else:
         content.append(Paragraph("No water level history available for this station right now.", styles["Normal"]))
     content.append(Spacer(1, 12))
-
-# rain forecast chart
-if daily_dataframe is not None and not daily_dataframe.empty:
-    data = daily_dataframe
-    data["date"] = pd.to_datetime(data["date"])
-    data["rain_sum"] = pd.to_numeric(data["rain_sum"], errors="coerce")
-    df = pd.DataFrame(data)
-    X = data['date']
-    Y = data['rain_sum']
-    plt.figure(figsize=(10, 5))
-    plt.bar(X, Y, color="b")
-    plt.grid()
-    plt.title(f"Rain forecast for the next {rain_forecast} days", fontsize=12, fontweight='bold')
-    plt.xlabel("Date")
-    plt.ylabel("Predicted amount of rain in mm")
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-
-    img_buffer = BytesIO()
-    plt.savefig(img_buffer, format="PNG", dpi=150)
-    plt.close()
-
-    img_buffer.seek(0)
-
-    chart_rain_forecast = Image(
-        img_buffer,
-        width=500,
-        height=250
-    )
-    
-    content.append(chart_rain_forecast)
-else:
-    content.append(Paragraph("No rain forecast available.", styles["Normal"]))
-content.append(Spacer(1, 12))
 
 
 # water level forecast
@@ -508,11 +478,48 @@ if nearestDistance != -1:
         content.append(chart_forecast)
     else: 
         content.append(Paragraph("No water level forecast available for this station.", styles["Normal"]))
-    content.append(Spacer(1, 30))
+    content.append(Spacer(1, 12))
+
+
+# rain forecast chart
+if daily_dataframe is not None and not daily_dataframe.empty:
+    data = daily_dataframe
+    data["date"] = pd.to_datetime(data["date"])
+    data["rain_sum"] = pd.to_numeric(data["rain_sum"], errors="coerce")
+    df = pd.DataFrame(data)
+    X = data['date']
+    Y = data['rain_sum']
+    plt.figure(figsize=(10, 5))
+    plt.bar(X, Y, color="b")
+    plt.grid()
+    plt.title(f"Rain forecast for the next {rain_forecast} days", fontsize=12, fontweight='bold')
+    plt.xlabel("Date")
+    plt.ylabel("Predicted amount of rain in mm")
+    plt.xticks(rotation=45)
+    plt.tight_layout()
+
+    img_buffer = BytesIO()
+    plt.savefig(img_buffer, format="PNG", dpi=150)
+    plt.close()
+
+    img_buffer.seek(0)
+
+    chart_rain_forecast = Image(
+        img_buffer,
+        width=500,
+        height=250
+    )
+    
+    content.append(chart_rain_forecast)
+else:
+    content.append(Paragraph("No rain forecast available.", styles["Normal"]))
+content.append(Spacer(1, 30))
+
 
 # credit
 credit = "This report was created using the Flood Risk Analysis toolbox for ArcGIS by Lenja Fipper and Kian Jay Lenert, created in 2026."
 content.append(Paragraph(credit, styles["Normal"]))
+
 
 # build PDF
 pdf.build(content)
@@ -520,6 +527,7 @@ pdf.build(content)
 arcpy.SetParameterAsText(2, pdf_path)
 
 arcpy.AddMessage("PDF successfully created.")
+
 
 # modify the progressor bar
 arcpy.SetProgressorLabel("Analysis completed")
