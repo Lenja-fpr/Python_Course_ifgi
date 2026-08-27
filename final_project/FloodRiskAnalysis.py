@@ -397,7 +397,7 @@ content.append(Spacer(1, 20))
 if nearestDistance == -1:
     body = f"""
     {risk_text} <br/> <br/>
-    <b> There is no river in NRW that is located in a distance of 5 km around the given place</b><br/>
+    There is no river in NRW that is located in a distance of 5 km around the given place<br/>
     """
     content.append(Paragraph(body, styles["Normal"]))
     content.append(Spacer(1, 12))
