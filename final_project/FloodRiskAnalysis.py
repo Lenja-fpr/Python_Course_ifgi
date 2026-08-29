@@ -276,15 +276,26 @@ else:
         response = requests.get(f"https://pegelonline.wsv.de/webservices/rest-api/v2/stations/{station_id}.json?includeTimeseries=true&includeCurrentMeasurement=true")
         json_data = response.json() if response and response.status_code == 200 else None
         water_level_msg = ""
+        water_level_pdf = ""
         if json_data:
+
             # build water level info text
             water_level_msg = water_level_msg +(f"""Water level for the river {json_data['water']['longname']} 
                 in {json_data['longname']} 
                 at {json_data['timeseries'][0]['currentMeasurement']['timestamp']}:
-                <b> {json_data['timeseries'][0]['currentMeasurement']['value']}{json_data['timeseries'][0]['unit']}</b>. <br/>
-                <b> Distance to measuring station: </b> {round(distance, 2)}m""")
+                {json_data['timeseries'][0]['currentMeasurement']['value']}{json_data['timeseries'][0]['unit']}.
+                Distance to measuring station: {round(distance, 2)}m""")
+
+            # build water level pdf text
+            water_level_pdf = water_level_pdf +(f"""<b>Water level for the river {json_data['water']['longname']} 
+                in {json_data['longname']} <br/>
+                at {json_data['timeseries'][0]['currentMeasurement']['timestamp']}:</b>
+                {json_data['timeseries'][0]['currentMeasurement']['value']}{json_data['timeseries'][0]['unit']}. <br/>
+                <b>Distance to measuring station:</b> {round(distance, 2)}m""")
+            
             if(('stateMnwMhw' in json_data['timeseries'][0]['currentMeasurement']) and (json_data['timeseries'][0]['currentMeasurement']['stateMnwMhw'] != "unknown")):
-                water_level_msg = water_level_msg + (f"<br/> The current water level is <b> {json_data['timeseries'][0]['currentMeasurement']['stateMnwMhw']} </b> for this river.")
+                water_level_msg = water_level_msg + (f"The current water level is {json_data['timeseries'][0]['currentMeasurement']['stateMnwMhw']} for this river.")
+                water_level_pdf = water_level_pdf + (f"<br/> The current water level is <b> {json_data['timeseries'][0]['currentMeasurement']['stateMnwMhw']} </b> for this river.")
             # print water level info
             arcpy.AddMessage(water_level_msg)
     
@@ -429,7 +440,7 @@ else:
     <b> Nearest river: </b> {nearestName} <br/>
     <b> Distance to the nearest river: </b> {round(nearestDistance, 2)}m <br/>
     <b> Width of the nearest river: </b> {round(nearestWidth, 2)}m <br/> <br/>
-    {water_level_msg} <br/> <br/>
+    {water_level_pdf} <br/> <br/>
     <b>Water level history for the past 30 days:</b> 
     """
     content.append(Paragraph(body, styles["Normal"]))
