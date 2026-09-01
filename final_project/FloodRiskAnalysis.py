@@ -423,10 +423,11 @@ lat = round(pt_deg.firstPoint.Y, 2)
 coords = f"{lon}, {lat}"
 # get current time and date
 now = datetime.now()
+time_readable = now.strftime('%A, %d.%m.%Y, %H:%M')
 # write the text
 subheading = f"""
 This report contains data to enable the reader to evaluate the flooding risk at the point <b>{coords}</b>. <br/>
-Report created at {now}.
+Report created on {time_readable}.
 """
 content.append(Paragraph(subheading, styles["Normal"]))
 content.append(Spacer(1, 20))
