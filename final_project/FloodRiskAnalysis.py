@@ -15,6 +15,7 @@ from reportlab.lib import colors
 from reportlab.platypus.flowables import KeepTogether
 from datetime import datetime
 import matplotlib.pyplot as plt
+import datetime as dt
 
 # initialize progress bar
 arcpy.SetProgressor("step", "Starting flood risk analysis", 0, 6, 0)
@@ -279,23 +280,28 @@ else:
         water_level_pdf = ""
         if json_data:
 
-            # build water level info text
-            water_level_msg = water_level_msg +(f"""Water level for the river {json_data['water']['longname']} 
-                in {json_data['longname']} 
-                at {json_data['timeseries'][0]['currentMeasurement']['timestamp']}:
-                {json_data['timeseries'][0]['currentMeasurement']['value']}{json_data['timeseries'][0]['unit']}.
-                Distance to measuring station: {round(distance, 2)}m""")
+            # build info texts: 
+            timestamp = dt.datetime.strptime(json_data['timeseries'][0]['currentMeasurement']['timestamp'], '%Y-%m-%dT%H:%M:%S%z')
+            print_time = timestamp.strftime('%A, %d.%m.%Y, %H:%M')
+            river_name = json_data['water']['longname']
+            location = json_data['longname']
+            measurement = json_data['timeseries'][0]['currentMeasurement']['value']
+            unit = json_data['timeseries'][0]['unit']
+            dist = f"{round(distance, 2)}m"
 
-            # build water level pdf text
-            water_level_pdf = water_level_pdf +(f"""<b>Water level for the river {json_data['water']['longname']} 
-                in {json_data['longname']} <br/>
-                at {json_data['timeseries'][0]['currentMeasurement']['timestamp']}:</b>
-                {json_data['timeseries'][0]['currentMeasurement']['value']}{json_data['timeseries'][0]['unit']}. <br/>
-                <b>Distance to measuring station:</b> {round(distance, 2)}m""")
+            # for the geoprocessing window:            
+            water_level_msg = water_level_msg +(f"""Water level for the river {river_name} in {location} at {print_time}: {measurement}{unit}. 
+                Distance to measuring station: {dist}""")
+
+            # for the pdf:
+            water_level_pdf = water_level_pdf +(f"""Water level for the river {river_name} in {location} at {print_time}: 
+                <b>{measurement}{unit}</b>. <br/>
+                <b>Distance to measuring station:</b> {dist}""")
             
             if(('stateMnwMhw' in json_data['timeseries'][0]['currentMeasurement']) and (json_data['timeseries'][0]['currentMeasurement']['stateMnwMhw'] != "unknown")):
                 water_level_msg = water_level_msg + (f"The current water level is {json_data['timeseries'][0]['currentMeasurement']['stateMnwMhw']} for this river.")
                 water_level_pdf = water_level_pdf + (f"<br/> The current water level is <b> {json_data['timeseries'][0]['currentMeasurement']['stateMnwMhw']} </b> for this river.")
+
             # print water level info
             arcpy.AddMessage(water_level_msg)
     
